@@ -20,9 +20,14 @@ export interface CrossChainAnalyzer {
   detectChainIdValidationBypass(code: string): VulnerabilityFinding[];
   detectOracleConsistencyIssues(code: string): VulnerabilityFinding[];
   detectCrossChainReentrancy(code: string): VulnerabilityFinding[];
+  detectWormholeVulnerabilities(code: string): VulnerabilityFinding[]; // NEW
+  detectSignatureReplay(code: string): VulnerabilityFinding[]; // NEW
 }
 
 export class CrossChainAnalyzerImpl implements CrossChainAnalyzer {
+  // Regex patterns as class constants for performance
+  private static readonly SIGNATURE_PATTERN = /signature|ecrecover|verify|ECDSA/;
+  private static readonly CROSS_CHAIN_PATTERN = /bridge|cross-chain|crosschain|relay|message/;
 
   detectBridgeMessageReplay(code: string): VulnerabilityFinding[] {
     const findings: VulnerabilityFinding[] = [];
@@ -443,6 +448,292 @@ function bridgeTokens(address token, uint256 amount) external {
           exploitScenario: 'Call bridge callbacks directly with malicious data',
           economicImpact: 'Can bypass bridge security controls'
         });
+      }
+    }
+
+    return findings;
+  }
+
+  /**
+   * NEW: Detect Wormhole-specific vulnerabilities
+   */
+  detectWormholeVulnerabilities(code: string): VulnerabilityFinding[] {
+    const findings: VulnerabilityFinding[] = [];
+
+    // Check for Wormhole bridge usage
+    if (code.includes('Wormhole') || code.includes('wormhole') || code.includes('parseAndVerifyVM')) {
+      
+      // 1. Check for parseAndVerifyVM without proper validation
+      if (code.includes('parseAndVerifyVM')) {
+        if (!code.includes('verifyVMSignatures') && !code.includes('guardianSet')) {
+          findings.push({
+            title: 'Wormhole parseAndVerifyVM Missing Signature Verification',
+            severity: 'Critical',
+            description: 'parseAndVerifyVM is used without verifying guardian signatures, allowing forged messages.',
+            impact: 'Attackers can create fake Wormhole messages and execute arbitrary cross-chain actions.',
+            location: 'Wormhole message parsing logic',
+            recommendation: 'Always verify guardian signatures using verifyVMSignatures before processing VAA (Verified Action Approval).',
+            exploitScenario: 'Forge Wormhole VAA without valid signatures to execute unauthorized cross-chain transfers',
+            economicImpact: 'Total bridge funds at risk (e.g., $325M Wormhole hack)',
+            pocCode: `
+// Vulnerable Wormhole integration
+function processWormholeMessage(bytes memory encodedVM) external {
+    (IWormhole.VM memory vm, bool valid, string memory reason) = wormhole.parseAndVerifyVM(encodedVM);
+    
+    // Missing: Guardian signature verification!
+    // if (!valid) revert("Invalid VM");
+    
+    // Process message without validation
+    executeAction(vm.payload);
+}
+
+// Attacker creates fake VAA
+bytes memory fakeVAA = craftFakeWormholeVAA(...);
+victim.processWormholeMessage(fakeVAA); // Succeeds without signature check
+            `
+          });
+        }
+
+        // Check for sequence number validation
+        if (!code.includes('consumedMessages') && !code.includes('sequence')) {
+          findings.push({
+            title: 'Wormhole Message Replay Risk',
+            severity: 'High',
+            description: 'Wormhole messages lack sequence number tracking, allowing replay attacks.',
+            impact: 'Same Wormhole message can be replayed multiple times.',
+            location: 'Wormhole message processing',
+            recommendation: 'Track consumed message hashes using mapping(bytes32 => bool) consumedMessages.',
+            exploitScenario: 'Replay valid Wormhole messages to drain funds',
+            economicImpact: 'Multiple fund transfers from single message'
+          });
+        }
+      }
+
+      // 2. Check for emitter address validation
+      if (code.includes('parseAndVerifyVM') && !code.includes('emitterAddress')) {
+        findings.push({
+          title: 'Missing Wormhole Emitter Address Validation',
+          severity: 'High',
+          description: 'Wormhole messages accepted from any emitter without validation.',
+          impact: 'Malicious contracts can send messages pretending to be trusted sources.',
+          location: 'Wormhole message validation',
+          recommendation: 'Validate vm.emitterAddress matches expected trusted emitter.',
+          exploitScenario: 'Deploy malicious contract on source chain and send fake messages',
+          economicImpact: 'Can spoof cross-chain messages'
+        });
+      }
+
+      // 3. Check for chain ID validation
+      if (code.includes('parseAndVerifyVM') && !code.includes('emitterChainId')) {
+        findings.push({
+          title: 'Missing Wormhole Chain ID Validation',
+          severity: 'Medium',
+          description: 'Wormhole messages not validated for source chain ID.',
+          impact: 'Messages from unexpected chains may be processed.',
+          location: 'Wormhole chain validation',
+          recommendation: 'Validate vm.emitterChainId matches expected source chain.',
+          exploitScenario: 'Send messages from untrusted chains',
+          economicImpact: 'Cross-chain validation bypass'
+        });
+      }
+
+      // 4. Check for payload parsing vulnerabilities
+      if (code.includes('parseAndVerifyVM') && code.includes('abi.decode')) {
+        if (!code.includes('require') || !code.includes('payload.length')) {
+          findings.push({
+            title: 'Unsafe Wormhole Payload Parsing',
+            severity: 'Medium',
+            description: 'Wormhole payload decoded without length or format validation.',
+            impact: 'Malformed payloads can cause unexpected behavior or reverts.',
+            location: 'Wormhole payload processing',
+            recommendation: 'Validate payload length and structure before decoding.',
+            exploitScenario: 'Send malformed payload to cause DOS or unexpected state',
+            economicImpact: 'Contract malfunction or denial of service'
+          });
+        }
+      }
+
+      // 5. Check for consistency level validation
+      if (code.includes('parseAndVerifyVM') && !code.includes('consistencyLevel')) {
+        findings.push({
+          title: 'Wormhole Consistency Level Not Enforced',
+          severity: 'Low',
+          description: 'Messages accepted without checking required finality level.',
+          impact: 'Messages may be processed before reaching sufficient finality.',
+          location: 'Wormhole message processing',
+          recommendation: 'Enforce minimum consistencyLevel based on security requirements.',
+          exploitScenario: 'Process messages before finality, then reorg source chain',
+          economicImpact: 'Messages can be invalidated post-processing'
+        });
+      }
+    }
+
+    return findings;
+  }
+
+  /**
+   * NEW: Detect generic signature replay vulnerabilities in cross-chain messages
+   */
+  detectSignatureReplay(code: string): VulnerabilityFinding[] {
+    const findings: VulnerabilityFinding[] = [];
+
+    // Check for signature-based cross-chain operations
+    const hasSignatures = CrossChainAnalyzerImpl.SIGNATURE_PATTERN.test(code);
+    const isCrossChain = CrossChainAnalyzerImpl.CROSS_CHAIN_PATTERN.test(code);
+
+    if (hasSignatures && isCrossChain) {
+      
+      // 1. Check for missing nonce in signature verification
+      if (code.includes('ecrecover') || code.includes('verify')) {
+        if (!code.includes('nonce') && !code.includes('_nonce')) {
+          findings.push({
+            title: 'Cross-Chain Signature Replay - Missing Nonce',
+            severity: 'Critical',
+            description: 'Signatures verified without nonce, enabling replay attacks across chains.',
+            impact: 'Same signature can be replayed on multiple chains or multiple times.',
+            location: 'Signature verification logic',
+            recommendation: 'Include nonce in signed message and track used nonces per signer.',
+            exploitScenario: 'Capture valid signature and replay on multiple chains',
+            economicImpact: 'Complete loss of signed authorizations',
+            pocCode: `
+// Vulnerable signature verification
+function executeWithSignature(
+    address target,
+    bytes calldata data,
+    bytes calldata signature
+) external {
+    bytes32 messageHash = keccak256(abi.encodePacked(target, data));
+    address signer = ECDSA.recover(messageHash, signature);
+    
+    // Missing: nonce validation!
+    require(signer == owner, "Invalid signer");
+    
+    // Execute action
+    (bool success,) = target.call(data);
+}
+
+// Attacker replays signature
+victim.executeWithSignature(target, data, signature); // Works first time
+victim.executeWithSignature(target, data, signature); // Works again! (replay)
+            `
+          });
+        }
+
+        // 2. Check for missing deadline/expiry
+        if (!code.includes('deadline') && !code.includes('expiry') && !code.includes('timestamp')) {
+          findings.push({
+            title: 'Cross-Chain Signature Without Expiry',
+            severity: 'High',
+            description: 'Signatures have no expiration time, allowing use indefinitely.',
+            impact: 'Old signatures can be used long after they were created.',
+            location: 'Signature verification',
+            recommendation: 'Include deadline timestamp in signature and validate against block.timestamp.',
+            exploitScenario: 'Use old signature months/years later when circumstances changed',
+            economicImpact: 'Stale authorizations can be exploited'
+          });
+        }
+
+        // 3. Check for missing chain ID in signature
+        if (!code.includes('chainId') && !code.includes('block.chainid')) {
+          findings.push({
+            title: 'Cross-Chain Signature Replay Across Chains',
+            severity: 'Critical',
+            description: 'Signatures not bound to specific chain, allowing cross-chain replay.',
+            impact: 'Signature valid on one chain can be replayed on all other chains.',
+            location: 'Signature message construction',
+            recommendation: 'Include block.chainid in signed message to prevent cross-chain replay.',
+            exploitScenario: 'Capture signature on testnet and replay on mainnet, or vice versa',
+            economicImpact: 'Cross-chain authorization theft',
+            pocCode: `
+// Vulnerable - no chainId
+bytes32 messageHash = keccak256(abi.encodePacked(
+    action,
+    amount,
+    recipient
+    // Missing: block.chainid
+));
+
+// Safe version
+bytes32 messageHash = keccak256(abi.encodePacked(
+    action,
+    amount,
+    recipient,
+    block.chainid,  // Prevents cross-chain replay
+    nonce,          // Prevents same-chain replay
+    deadline        // Prevents time-based attacks
+));
+            `
+          });
+        }
+
+        // 4. Check for EIP-712 usage
+        if (!code.includes('EIP712') && !code.includes('DOMAIN_SEPARATOR')) {
+          findings.push({
+            title: 'Cross-Chain Signatures Not Using EIP-712',
+            severity: 'Medium',
+            description: 'Signatures not following EIP-712 standard, missing domain separation.',
+            impact: 'Signatures may be valid across different contracts or versions.',
+            location: 'Signature scheme implementation',
+            recommendation: 'Implement EIP-712 with proper domain separator including contract address and chain ID.',
+            exploitScenario: 'Replay signature from different contract or contract version',
+            economicImpact: 'Cross-contract signature replay'
+          });
+        }
+
+        // 5. Check for signature malleability
+        if (code.includes('ecrecover')) {
+          // Check for v parameter validation (various forms)
+          const hasVValidation = 
+            /v\s*==\s*27/.test(code) || 
+            /v\s*==\s*28/.test(code) ||
+            /require.*v.*27|28/.test(code) ||
+            /ECDSA\.recover/.test(code); // OpenZeppelin lib handles this
+          
+          if (!hasVValidation) {
+            findings.push({
+              title: 'ECDSA Signature Malleability',
+              severity: 'Low',
+              description: 'Signature validation vulnerable to malleability attacks.',
+              impact: 'Attacker can create multiple valid signatures for same message.',
+              location: 'ecrecover usage',
+              recommendation: 'Use OpenZeppelin ECDSA library or validate v parameter (v == 27 || v == 28).',
+              exploitScenario: 'Create alternate signature to bypass nonce checks',
+              economicImpact: 'Can bypass some replay protections'
+            });
+          }
+        }
+      }
+
+      // 6. Check for permit/approval signature issues
+      if (code.includes('permit') || code.includes('Permit')) {
+        if (!code.includes('nonces[')) {
+          findings.push({
+            title: 'Permit Function Missing Nonce Tracking',
+            severity: 'Critical',
+            description: 'ERC20 permit function does not track nonces per address.',
+            impact: 'Permit signatures can be replayed multiple times.',
+            location: 'Permit implementation',
+            recommendation: 'Implement mapping(address => uint256) public nonces and increment after each permit.',
+            exploitScenario: 'Replay permit signature to approve tokens multiple times',
+            economicImpact: 'Unlimited approvals from single signature'
+          });
+        }
+      }
+
+      // 7. Check for meta-transaction replay
+      if (code.includes('meta') || code.includes('relay')) {
+        if (!code.includes('nonce') || !code.includes('executed')) {
+          findings.push({
+            title: 'Meta-Transaction Replay Vulnerability',
+            severity: 'High',
+            description: 'Meta-transactions lack proper replay protection.',
+            impact: 'Same meta-transaction can be executed multiple times.',
+            location: 'Meta-transaction execution',
+            recommendation: 'Track executed transaction hashes or use incremental nonces.',
+            exploitScenario: 'Replay meta-transaction to execute action multiple times',
+            economicImpact: 'Duplicate transactions and fund loss'
+          });
+        }
       }
     }
 

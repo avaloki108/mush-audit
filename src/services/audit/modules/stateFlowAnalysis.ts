@@ -97,6 +97,13 @@ export interface TaintReport {
   risk: string;
 }
 
+export interface StateInvariant {
+  description: string;
+  condition: string;
+  violated: boolean;
+  affectedContracts: string[];
+}
+
 export class StateFlowAnalyzer {
   private contractStates: ContractState[];
   private variableTypes: Map<string, string>; // Maps variable names to their types
@@ -104,10 +111,6 @@ export class StateFlowAnalyzer {
   constructor(contracts: ContractFile[]) {
     this.variableTypes = new Map();
     this.contractStates = contracts.map(contract => this.parseContractState(contract));
-  private contracts: ContractFile[];
-
-  constructor(contracts: ContractFile[]) {
-    this.contracts = contracts;
   }
 
   analyzeStateFlow(): StateFlowResult {
@@ -120,10 +123,12 @@ export class StateFlowAnalyzer {
       taintAnalysis: []
     };
 
-    this.contracts.forEach(contract => {
-      // 1. Analyze "Money Flow" (Functions dealing with Value)
-      const moneyPaths = this.analyzeMoneyFlow(contract);
-      result.criticalPaths.push(...moneyPaths);
+    // Analyze each contract state for vulnerabilities
+    this.contractStates.forEach(contractState => {
+      const analysis = this.analyzeTransitions(contractState);
+      result.criticalPaths.push(...analysis.criticalPaths);
+      result.potentialIssues.push(...analysis.potentialIssues);
+    });
 
     // NEW: Analyze cross-contract flows
     result.crossContractFlows = this.analyzeCrossContractFlows(this.contractStates);
@@ -134,24 +139,14 @@ export class StateFlowAnalyzer {
 
     // Check protocol-wide state invariants
     result.stateInvariants = this.checkStateInvariants(this.contractStates);
-      // 2. Taint Analysis (Input -> State/Call)
-      const taints = this.performTaintAnalysis(contract);
-      result.taintAnalysis.push(...taints);
-
-      // 3. Check specific state hazards
-      const hazards = this.detectStateHazards(contract);
-      result.potentialIssues.push(...hazards);
-    });
 
     return result;
   }
 
   /**
-   * Identifies critical paths where money is moved.
-   * It checks if these paths are guarded by Access Control.
+   * Parse contract into ContractState structure
    */
-  private analyzeMoneyFlow(contract: ContractFile): CriticalPath[] {
-    const paths: CriticalPath[] = [];
+  private parseContractState(contract: ContractFile): ContractState {
     const content = contract.content;
 
     // Trace variable types for better call resolution
@@ -264,6 +259,35 @@ export class StateFlowAnalyzer {
     }
 
     return functions;
+  }
+
+  private extractFunctionBody(contractCode: string, functionName: string): string {
+    // Simple extraction - find function and get content between braces
+    const functionPattern = new RegExp(`function\\s+${functionName}\\s*\\([^)]*\\)[^{]*\\{`, 'g');
+    const match = functionPattern.exec(contractCode);
+    
+    if (!match) return '';
+    
+    const startIndex = match.index! + match[0].length;
+    let braceCount = 1;
+    let endIndex = startIndex;
+    
+    // Find matching closing brace
+    for (let i = startIndex; i < contractCode.length && braceCount > 0; i++) {
+      if (contractCode[i] === '{') braceCount++;
+      if (contractCode[i] === '}') braceCount--;
+      endIndex = i;
+    }
+    
+    return contractCode.slice(startIndex, endIndex);
+  }
+
+  private checkIfModifiesState(functionBody: string): boolean {
+    // Check for state modifications
+    return /\s+\w+\s*=\s*[^=]/.test(functionBody) || // assignments
+           /\+\+|\-\-/.test(functionBody) ||          // increment/decrement
+           /\.push\(|\.pop\(/.test(functionBody) ||   // array operations
+           /delete\s+/.test(functionBody);            // delete operations
   }
 
   private parseStateTransitions(contractCode: string, stateVariables: StateVariable[]): StateTransition[] {
@@ -484,38 +508,135 @@ export class StateFlowAnalyzer {
       // Identify critical state transition paths
       if (transition.externalCalls.length > 0 && transition.stateChanges.length > 0) {
         criticalPaths.push({
-          path: [contractState.contractName, transition.functionName, ...transition.externalCalls.map(c => c.target)],
+          functionName: transition.functionName,
+          risk: 'High',
           description: `Function ${transition.functionName} modifies state and makes external calls`,
-          risk: 'high',
-          impact: 'State can be manipulated through reentrancy or unexpected external behavior'
-    // Find functions with 'payable' or transfer logic
-    const transferRegex = /function\s+(\w+)[^{]+{([\s\S]+?)}/g;
-    let match;
-
-    while ((match = transferRegex.exec(content)) !== null) {
-      const funcName = match[1];
-      const body = match[2];
-
-      const movesFunds = /\.transfer|\.send|safeTransfer|mint|burn/.test(body);
-      const isProtected = /onlyOwner|auth|require\(msg\.sender/.test(body) || /onlyOwner|auth/.test(match[0]); // Check modifiers in sig
-
-      if (movesFunds) {
-        const risk = isProtected ? 'Medium' : 'Critical';
-        paths.push({
-          functionName: `${contract.name}.${funcName}`,
-          risk: risk,
-          description: isProtected 
-            ? 'Protected fund movement function.' 
-            : 'UNPROTECTED fund movement detected! Anyone can potentially trigger this.',
-          steps: [`Function: ${funcName}`, `Contains fund transfer logic`, `Access Control: ${isProtected ? 'Yes' : 'NO'}`]
+          steps: [
+            `Function: ${transition.functionName}`,
+            `External calls: ${transition.externalCalls.length}`,
+            `State changes: ${transition.stateChanges.length}`,
+            'Risk: Potential reentrancy vulnerability'
+          ]
         });
       }
+    });
+
+    return { criticalPaths, potentialIssues };
+  }
+
+  private checkReentrancyRisk(transition: StateTransition, contractName: string): StateFlowIssue | null {
+    // Check if state changes happen after external calls
+    const hasExternalCalls = transition.externalCalls.length > 0;
+    const hasStateChangesAfter = transition.externalCalls.some(call => call.position === 'before');
+
+    if (hasExternalCalls && hasStateChangesAfter) {
+      return {
+        type: 'Reentrancy Vulnerability',
+        severity: 'High',
+        contract: contractName,
+        function: transition.functionName,
+        description: `Function ${transition.functionName} modifies state after making external calls, violating the Checks-Effects-Interactions pattern`,
+        recommendation: 'Move state changes before external calls or use ReentrancyGuard modifier'
+      };
     }
-    return paths;
+
+    return null;
+  }
+
+  private checkAccessControl(transition: StateTransition, contractName: string): StateFlowIssue | null {
+    // Check if state-changing function has access control
+    if (transition.stateChanges.length > 0 && transition.visibility === 'external' || transition.visibility === 'public') {
+      const hasAccessControl = transition.modifiers.some(mod => 
+        /only|auth|guard|owner|admin/i.test(mod)
+      );
+
+      if (!hasAccessControl) {
+        return {
+          type: 'Missing Access Control',
+          severity: 'Medium',
+          contract: contractName,
+          function: transition.functionName,
+          description: `Public function ${transition.functionName} modifies state without access control`,
+          recommendation: 'Add access control modifiers (e.g., onlyOwner, onlyRole) to restrict function access'
+        };
+      }
+    }
+
+    return null;
+  }
+
+  private checkUncheckedArithmetic(transition: StateTransition, contractName: string): StateFlowIssue | null {
+    // Check for arithmetic operations that might overflow/underflow
+    const hasArithmetic = transition.stateChanges.some(change => 
+      change.operation === 'increment' || change.operation === 'decrement'
+    );
+
+    if (hasArithmetic) {
+      // Check if there are no require checks
+      if (transition.requireChecks.length === 0) {
+        return {
+          type: 'Unchecked Arithmetic',
+          severity: 'Low',
+          contract: contractName,
+          function: transition.functionName,
+          description: `Function ${transition.functionName} performs arithmetic operations without checks`,
+          recommendation: 'Add bounds checking or use SafeMath/checked arithmetic'
+        };
+      }
+    }
+
+    return null;
   }
 
   /**
-   * Traces user inputs (arguments) to sensitive sinks (SSTORE, CALL, DELEGATECALL).
+   * Check protocol-wide state invariants
+   */
+  private checkStateInvariants(contractStates: ContractState[]): StateInvariant[] {
+    const invariants: StateInvariant[] = [];
+
+    // Check for total supply invariants across token contracts
+    const tokenContracts = contractStates.filter(c => 
+      c.stateVariables.some(v => v.name === 'totalSupply')
+    );
+
+    if (tokenContracts.length > 1) {
+      invariants.push({
+        description: 'Multiple token contracts with totalSupply detected',
+        condition: 'Sum of all balances should equal total supply across all contracts',
+        violated: false, // Would need runtime data to verify
+        affectedContracts: tokenContracts.map(c => c.contractName)
+      });
+    }
+
+    // Check for balance invariants
+    contractStates.forEach(state => {
+      const hasBalanceMapping = state.stateVariables.some(v => 
+        v.name.includes('balance') || v.name.includes('Balance')
+      );
+
+      if (hasBalanceMapping) {
+        // Check if there are functions that could violate balance invariants
+        const hasUncheckedTransfers = state.transitions.some(t => 
+          t.stateChanges.some(sc => sc.variable.includes('balance')) &&
+          t.requireChecks.length === 0
+        );
+
+        if (hasUncheckedTransfers) {
+          invariants.push({
+            description: `Balance updates in ${state.contractName} lack validation`,
+            condition: 'Balance changes should be validated to prevent overflow/underflow',
+            violated: true,
+            affectedContracts: [state.contractName]
+          });
+        }
+      }
+    });
+
+    return invariants;
+  }
+
+  /**
+   * OLD METHODS - keeping for backwards compatibility but not used in new flow
    */
   private performTaintAnalysis(contract: ContractFile): TaintReport[] {
     const reports: TaintReport[] = [];

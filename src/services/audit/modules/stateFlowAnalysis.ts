@@ -537,7 +537,147 @@ export class StateFlowAnalyzer {
           impact: 'Incorrect balance tracking can lead to fund loss or protocol insolvency'
         });
       }
+
+      // Check for supply invariants (total supply = sum of all balances)
+      const hasTotalSupply = state.stateVariables.some(v =>
+        v.name.toLowerCase().includes('totalsupply')
+      );
+      const hasBalances = state.stateVariables.some(v =>
+        v.name.toLowerCase().includes('balances') || v.name.toLowerCase().includes('balance')
+      );
+
+      if (hasTotalSupply && hasBalances) {
+        // Check if mint/burn functions properly update both
+        const mintBurnFunctions = state.transitions.filter(t =>
+          t.functionName.toLowerCase().includes('mint') || 
+          t.functionName.toLowerCase().includes('burn')
+        );
+
+        mintBurnFunctions.forEach(fn => {
+          const updatesTotalSupply = fn.stateChanges.some(c => 
+            c.variable.toLowerCase().includes('totalsupply')
+          );
+          const updatesBalances = fn.stateChanges.some(c =>
+            c.variable.toLowerCase().includes('balance')
+          );
+
+          if (!updatesTotalSupply || !updatesBalances) {
+            invariants.push({
+              description: `Function ${fn.functionName} may break supply invariant (totalSupply = sum(balances))`,
+              violated: true,
+              contracts: [state.contractName],
+              impact: 'Supply mismatch can lead to accounting errors and potential fund loss'
+            });
+          }
+        });
+      }
+
+      // Check for share price invariants (vault tokens)
+      const isVault = state.contractName.toLowerCase().includes('vault') ||
+                     state.stateVariables.some(v => v.name.toLowerCase().includes('shares'));
+      
+      if (isVault) {
+        const hasDepositWithdraw = state.transitions.some(t =>
+          t.functionName.toLowerCase().includes('deposit') ||
+          t.functionName.toLowerCase().includes('withdraw')
+        );
+
+        if (hasDepositWithdraw) {
+          // Check for share price manipulation protection
+          const hasMinShares = state.transitions.some(t =>
+            t.requireChecks.some(c => c.includes('shares') && (c.includes('>') || c.includes('min')))
+          );
+
+          invariants.push({
+            description: 'Vault should protect against share price manipulation',
+            violated: !hasMinShares,
+            contracts: [state.contractName],
+            impact: 'Share price manipulation can enable inflation attacks or donation attacks'
+          });
+        }
+      }
+
+      // Check for liquidity invariants (AMM pools)
+      const isAMM = state.contractName.toLowerCase().includes('pool') ||
+                    state.contractName.toLowerCase().includes('pair') ||
+                    state.stateVariables.some(v => v.name.toLowerCase().includes('reserve'));
+
+      if (isAMM) {
+        const swapFunctions = state.transitions.filter(t =>
+          t.functionName.toLowerCase().includes('swap')
+        );
+
+        swapFunctions.forEach(fn => {
+          // Check for slippage protection
+          const hasSlippageProtection = fn.requireChecks.some(c =>
+            c.includes('min') && (c.includes('amount') || c.includes('out'))
+          );
+
+          if (!hasSlippageProtection) {
+            invariants.push({
+              description: `Swap function ${fn.functionName} lacks slippage protection`,
+              violated: true,
+              contracts: [state.contractName],
+              impact: 'Users vulnerable to sandwich attacks and MEV exploitation'
+            });
+          }
+        });
+
+        // Check for constant product invariant (k = x * y)
+        const hasReserveUpdates = state.transitions.some(t =>
+          t.stateChanges.filter(c => c.variable.toLowerCase().includes('reserve')).length >= 2
+        );
+
+        if (hasReserveUpdates) {
+          invariants.push({
+            description: 'AMM should maintain constant product invariant (k = reserve0 * reserve1)',
+            violated: false, // Can't easily detect violation statically
+            contracts: [state.contractName],
+            impact: 'Breaking invariant can lead to value extraction and pool imbalance'
+          });
+        }
+      }
     });
+
+    // Cross-contract invariants
+    if (contractStates.length > 1) {
+      // Check for circular dependencies in value transfers
+      const transferringContracts = contractStates.filter(state =>
+        state.transitions.some(t =>
+          t.externalCalls.length > 0 && 
+          (t.functionName.toLowerCase().includes('transfer') ||
+           t.functionName.toLowerCase().includes('send'))
+        )
+      );
+
+      if (transferringContracts.length >= 2) {
+        invariants.push({
+          description: 'Multiple contracts perform external transfers - verify no circular dependencies',
+          violated: false, // Would need deeper analysis
+          contracts: transferringContracts.map(c => c.contractName),
+          impact: 'Circular dependencies in transfers can lead to reentrancy or fund locking'
+        });
+      }
+
+      // Check for consistent access control across protocol
+      const accessControlPatterns = new Set<string>();
+      contractStates.forEach(state => {
+        state.transitions.forEach(t => {
+          if (t.modifiers.length > 0) {
+            t.modifiers.forEach(m => accessControlPatterns.add(m));
+          }
+        });
+      });
+
+      if (accessControlPatterns.size > 3) {
+        invariants.push({
+          description: 'Inconsistent access control patterns across contracts',
+          violated: true,
+          contracts: contractStates.map(c => c.contractName),
+          impact: 'Inconsistent access controls may create privilege escalation vectors'
+        });
+      }
+    }
 
     return invariants;
   }

@@ -324,16 +324,72 @@ export async function analyzeContract(params: {
         // Cross-contract vulnerabilities
         if (dependencyGraph.vulnerabilities.length > 0) {
           crossContractSection += '### Cross-Contract Vulnerabilities\n\n';
+          
+          // Group by severity
+          const criticalVulns = dependencyGraph.vulnerabilities.filter((v: any) => v.severity === 'Critical');
+          const highVulns = dependencyGraph.vulnerabilities.filter((v: any) => v.severity === 'High');
+          const mediumVulns = dependencyGraph.vulnerabilities.filter((v: any) => v.severity === 'Medium');
+          const lowVulns = dependencyGraph.vulnerabilities.filter((v: any) => v.severity === 'Low');
+
+          if (criticalVulns.length > 0) {
+            crossContractSection += `⚠️ **${criticalVulns.length} CRITICAL** cross-contract vulnerabilities found\n\n`;
+          }
+          if (highVulns.length > 0) {
+            crossContractSection += `⚠️ **${highVulns.length} HIGH** severity cross-contract vulnerabilities found\n\n`;
+          }
+
           dependencyGraph.vulnerabilities.forEach((vuln: any) => {
             crossContractSection += `---\n\n`;
-            crossContractSection += `#### ${vuln.title}\n`;
+            crossContractSection += `#### ${vuln.type}\n`;
             crossContractSection += `- **Severity:** ${vuln.severity}\n`;
-            crossContractSection += `- **Type:** ${vuln.type}\n`;
-            crossContractSection += `- **Affected Contracts:** ${vuln.affectedContracts.join(', ')}\n`;
+            crossContractSection += `- **Affected Contracts:** ${vuln.contracts.join(', ')}\n`;
+            crossContractSection += `- **Location:** ${vuln.location}\n`;
             crossContractSection += `- **Description:** ${vuln.description}\n`;
-            crossContractSection += `- **Impact:** ${vuln.impact}\n`;
+            
+            if (vuln.dataFlow) {
+              crossContractSection += `- **Attack Flow:** ${vuln.dataFlow}\n`;
+            }
+
+            // Add economic impact assessment
+            if (vuln.severity === 'Critical' || vuln.severity === 'High') {
+              crossContractSection += `- **Economic Impact:** `;
+              if (vuln.type.toLowerCase().includes('oracle') || vuln.type.toLowerCase().includes('flash loan')) {
+                crossContractSection += `HIGH - Potential for total value locked (TVL) drainage through oracle manipulation\n`;
+              } else if (vuln.type.toLowerCase().includes('governance')) {
+                crossContractSection += `CRITICAL - Complete protocol takeover possible, all funds at risk\n`;
+              } else if (vuln.type.toLowerCase().includes('reentrancy')) {
+                crossContractSection += `HIGH - Repeated unauthorized withdrawals can drain contract balances\n`;
+              } else if (vuln.type.toLowerCase().includes('access control')) {
+                crossContractSection += `HIGH - Unauthorized operations can lead to fund theft or protocol disruption\n`;
+              } else {
+                crossContractSection += `MEDIUM to HIGH - User funds at risk depending on exploit conditions\n`;
+              }
+            }
+
             crossContractSection += `- **Recommendation:** ${vuln.recommendation}\n\n`;
           });
+
+          // Add overall risk assessment
+          crossContractSection += '\n#### Overall Cross-Contract Risk Assessment\n\n';
+          const totalVulns = dependencyGraph.vulnerabilities.length;
+          const riskScore = (criticalVulns.length * 10 + highVulns.length * 5 + mediumVulns.length * 2 + lowVulns.length * 1);
+          
+          crossContractSection += `- **Total Cross-Contract Vulnerabilities:** ${totalVulns}\n`;
+          crossContractSection += `- **Risk Score:** ${riskScore}/100\n`;
+          crossContractSection += `- **Risk Level:** `;
+          if (riskScore >= 40) {
+            crossContractSection += `**CRITICAL** ⚠️\n`;
+          } else if (riskScore >= 20) {
+            crossContractSection += `**HIGH** ⚠️\n`;
+          } else if (riskScore >= 10) {
+            crossContractSection += `**MEDIUM**\n`;
+          } else {
+            crossContractSection += `**LOW**\n`;
+          }
+          
+          if (criticalVulns.length > 0 || highVulns.length > 0) {
+            crossContractSection += `\n**⚠️ URGENT ACTION REQUIRED:** This protocol has ${criticalVulns.length + highVulns.length} critical/high severity cross-contract vulnerabilities that could lead to significant fund loss. Immediate remediation is recommended before deployment or when handling user funds.\n`;
+          }
         }
 
         // State Flow Analysis Results

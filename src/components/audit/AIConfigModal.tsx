@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+"use client";
+import { useState, useEffect, useMemo } from "react";
 import { useAIConfig } from "@/utils/ai";
 import { GPT_MODELS } from "@/utils/openai-models";
 import { CLAUDE_MODELS } from "@/utils/claude-models";
@@ -23,7 +24,7 @@ export default function AIConfigModal({
   confirmLabel,
 }: AIConfigModalProps) {
   const [config, setConfig] = useState<AIConfig>(() => {
-    const defaultConfig = {
+    const defaultConfig: AIConfig = {
       provider: "gpt",
       gptKey: "",
       claudeKey: "",
@@ -35,23 +36,44 @@ export default function AIConfigModal({
       selectedModel: GPT_MODELS[0].id,
       language: "english",
       superPrompt: true,
-    } as AIConfig;
-
-    const savedConfig = localStorage.getItem('ai_config');
-    if (savedConfig) {
-      try {
-        return {
-          ...defaultConfig,
-          ...JSON.parse(savedConfig),
-          superPrompt: true,
-        };
-      } catch (e) {
-        console.error('Failed to parse saved config:', e);
+    };
+    // Guard browser-only API access for SSR
+    if (typeof window !== "undefined" && window.localStorage) {
+      const savedConfig = window.localStorage.getItem("ai_config");
+      if (savedConfig) {
+        try {
+          return {
+            ...defaultConfig,
+            ...JSON.parse(savedConfig),
+            superPrompt: true,
+          };
+        } catch (e) {
+          console.error("Failed to parse saved config:", e);
+        }
       }
     }
     return defaultConfig;
   });
   const providerInfo = getProviderInfo(config.provider);
+
+  // Detect env-provided key (server or client exposed) for current provider to display read-only hint.
+  const envKey = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    switch (config.provider) {
+      case 'gpt':
+        return process.env.NEXT_PUBLIC_OPENAI_API_KEY || process.env.OPENROUTER_API_KEY || '';
+      case 'claude':
+        return process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY || '';
+      case 'gemini':
+        return process.env.NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY || '';
+      case 'xai':
+        return process.env.NEXT_PUBLIC_XAI_API_KEY || '';
+      case 'groq':
+        return process.env.NEXT_PUBLIC_GROQ_API_KEY || '';
+      default:
+        return '';
+    }
+  }, [config.provider]);
 
   // Handle provider change
   const handleProviderChange = (provider: AIConfig["provider"]) => {
@@ -82,14 +104,20 @@ export default function AIConfigModal({
   };
 
   const handleStartAnalysis = () => {
-    const currentKey = getApiKey(config);
+    const currentKey = getApiKey(config) || envKey;
     if (!currentKey?.trim()) {
-      toast.error(`Please enter your ${providerInfo.keyName}`);
+      toast.error(`Missing ${providerInfo.keyName}. Set in .env.local or enter below.`);
       return;
     }
     
-    // save config to local storage
-    localStorage.setItem('ai_config', JSON.stringify(config));
+    // save config to local storage (browser only)
+    if (typeof window !== "undefined" && window.localStorage) {
+      try {
+        window.localStorage.setItem("ai_config", JSON.stringify(config));
+      } catch (e) {
+        console.error("Failed to persist ai_config:", e);
+      }
+    }
     onStartAnalysis();
   };
 
@@ -238,8 +266,9 @@ export default function AIConfigModal({
               type="password"
               value={getApiKey(config)}
               onChange={(e) => handleKeyChange(e.target.value)}
-              placeholder={providerInfo.keyPlaceholder}
-              className="w-full bg-[#2A2A2A] text-gray-300 border border-[#404040] rounded-md px-3 py-2"
+              placeholder={envKey ? `${providerInfo.keyName} loaded from env` : providerInfo.keyPlaceholder}
+              disabled={!!envKey && !getApiKey(config)}
+              className={`w-full bg-[#2A2A2A] text-gray-300 border border-[#404040] rounded-md px-3 py-2 ${envKey && !getApiKey(config) ? 'opacity-60 cursor-not-allowed' : ''}`}
             />
             <div className="mt-2 text-sm text-gray-400">
               <p>
@@ -261,7 +290,13 @@ export default function AIConfigModal({
         <div className="flex justify-end gap-3 mt-6">
           <button
             onClick={() => {
-              localStorage.removeItem("ai_config");
+              if (typeof window !== "undefined" && window.localStorage) {
+                try {
+                  window.localStorage.removeItem("ai_config");
+                } catch (e) {
+                  console.error("Failed to remove ai_config:", e);
+                }
+              }
               setConfig({
                 provider: "gpt",
                 gptKey: "",

@@ -130,6 +130,15 @@ Mush Audit is an AI-powered smart contract security analysis platform that lever
 4. Select the blockchain network
 5. Get comprehensive security analysis with **2024-2025 vulnerability coverage**
 
+### Runtime Requirements & Environment Keys
+
+- The project requires Node.js >= 18 or Bun >= 1.0.0 (`engines` declared in `package.json`).
+- Preferred workflow: `bun install` then `bun dev` for faster startup.
+- Place AI provider keys in `.env.local` without `NEXT_PUBLIC_` prefix for server-side use (e.g. `GROQ_API_KEY`, `GOOGLE_GEMINI_API_KEY`, `XAI_API_KEY`).
+- If you need client-side direct access (less secure), duplicate them with `NEXT_PUBLIC_` prefixes (e.g. `NEXT_PUBLIC_GROQ_API_KEY`).
+- When an env key is detected and no custom key stored, the UI can mark the field as read-only ("Loaded from env").
+- Local overrides still persist in `localStorage` as `ai_config`.
+
 ### AI Provider Comparison
 
 | Provider | Speed | Cost | Privacy | Best For |

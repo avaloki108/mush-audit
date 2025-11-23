@@ -76,14 +76,24 @@ export const PROVIDERS = {
 export const getProviderInfo = (provider: AIConfig['provider']) => PROVIDERS[provider];
 
 export const getApiKey = (config: AIConfig) => {
-  const keys = {
-    gpt: config.gptKey,
-    claude: config.claudeKey,
-    gemini: config.geminiKey,
-    xai: config.xaiKey,
-    groq: config.groqKey,
-    mistral: config.mistralKey,
-    ollama: config.ollamaUrl,
+  // Prefer user-specified config values; fall back to environment variables.
+  // NOTE: Only NEXT_PUBLIC_* variables are available client-side. Non-public ones will be undefined here.
+  const envFallbacks: Record<AIConfig['provider'], string | undefined> = {
+    gpt: process.env.NEXT_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY,
+    claude: process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
+    gemini: process.env.NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY,
+    xai: process.env.NEXT_PUBLIC_XAI_API_KEY || process.env.XAI_API_KEY,
+    groq: process.env.NEXT_PUBLIC_GROQ_API_KEY || process.env.GROQ_API_KEY,
+    ollama: config.ollamaUrl, // Ollama URL stays in config
   };
-  return keys[config.provider] || "";
+
+  const keys = {
+    gpt: config.gptKey || envFallbacks.gpt || "",
+    claude: config.claudeKey || envFallbacks.claude || "",
+    gemini: config.geminiKey || envFallbacks.gemini || "",
+    xai: config.xaiKey || envFallbacks.xai || "",
+    groq: config.groqKey || envFallbacks.groq || "",
+    ollama: config.ollamaUrl,
+  } as const;
+  return keys[config.provider];
 }; 

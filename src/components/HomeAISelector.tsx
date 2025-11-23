@@ -15,9 +15,10 @@ export default function HomeAISelector() {
     setIsClient(true);
   }, []);
 
-  const providerInfo = getProviderInfo(config.provider);
-  // Only render the model label on the client to avoid hydration mismatches
-  const modelLabel = isClient ? getModelName(config) : "Loading...";
+  // Defer reading provider/model until after mount to avoid hydration mismatch.
+  // Server render and initial client render will both show a stable placeholder.
+  const providerInfo = isClient ? getProviderInfo(config.provider) : null;
+  const modelLabel = isClient ? getModelName(config) : null;
 
   const refreshConfig = () => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem("ai_config") : null;
@@ -64,8 +65,10 @@ export default function HomeAISelector() {
               />
             </svg>
           </span>
-          <span className="text-xs text-gray-400">
-            {providerInfo.name} · {modelLabel}
+          <span className="text-xs text-gray-400" suppressHydrationWarning>
+            {isClient && providerInfo && modelLabel
+              ? `${providerInfo.name} · ${modelLabel}`
+              : 'Loading AI config…'}
           </span>
         </div>
       </button>

@@ -51,6 +51,7 @@ export interface FunctionInfo {
 }
 
 export interface StateFlowResult {
+  contractStates: ContractState[]; // Add back the contractStates field
   criticalPaths: CriticalPath[];
   potentialIssues: StateFlowIssue[];
   stateInvariants: StateInvariant[];
@@ -117,6 +118,7 @@ export class StateFlowAnalyzer {
 
   analyzeStateFlow(): StateFlowResult {
     const result: StateFlowResult = {
+      contractStates: this.contractStates,
       criticalPaths: [],
       potentialIssues: [],
       stateInvariants: [],

@@ -6,6 +6,7 @@ import { toast } from "react-hot-toast";
 import { checkContractOnChains } from "@/utils/blockchain";
 import { getRpcUrl } from "@/utils/chainServices";
 import type { ChainContractInfo, ContractFile } from "@/types/blockchain";
+import { loadGitHubSolidityFiles, parseGitHubRepoUrl, sanitizeTokenInput } from "@/utils/githubRepoLoader";
 import ContractInfoCard from "@/components/audit/ContractInfoCard";
 import Image from "next/image";
 import Link from "next/link";
@@ -29,13 +30,19 @@ import {
   mergeContractContents,
 } from "@/utils/contractFilters";
 
-type TabType = "address" | "single-file" | "multi-files";
+type TabType = "address" | "single-file" | "multi-files" | "repository";
 
 export default function AuditPage() {
   const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
   const [chainInfo, setChainInfo] = useState<ChainContractInfo | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>("address");
+  // Repository tab states
+  const [repoUrl, setRepoUrl] = useState("");
+  const [repoToken, setRepoToken] = useState("");
+  const [repoLoading, setRepoLoading] = useState(false);
+  const [repoFiles, setRepoFiles] = useState<ContractFile[]>([]);
+  const [repoError, setRepoError] = useState<string | null>(null);
   const [isAIConfigModalOpen, setIsAIConfigModalOpen] = useState(false);
   const [contractCode, setContractCode] = useState("");
   const [analysisFiles, setAnalysisFiles] = useState<ContractFile[]>([]);
@@ -554,6 +561,12 @@ contract Vault {
                   icon: FilesIcon,
                   desc: "Analyze multiple contract files",
                 },
+                {
+                  id: "repository",
+                  label: "Repository",
+                  icon: CodeIcon,
+                  desc: "GitHub or local folder",
+                },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -610,6 +623,7 @@ contract Vault {
               {activeTab === "address" && "Enter Contract Address"}
               {activeTab === "single-file" && "Upload Contract File"}
               {activeTab === "multi-files" && "Upload Contract Files"}
+              {activeTab === "repository" && "Load Repository Contracts"}
             </h2>
             <p className="text-gray-400">
               {activeTab === "address" &&
@@ -618,8 +632,238 @@ contract Vault {
                 "Upload a single Solidity contract file (.sol)"}
               {activeTab === "multi-files" &&
                 "Upload multiple related contract files"}
+              {activeTab === "repository" &&
+                "Load smart contract files from a GitHub repository or select a local cloned folder"}
             </p>
           </div>
+          {activeTab === "repository" && (
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-3">
+                <label className="text-sm text-gray-300">GitHub Repository URL</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. https://github.com/owner/repo or owner/repo"
+                    value={repoUrl}
+                    onChange={(e) => setRepoUrl(e.target.value)}
+                    className="flex-1 h-11 bg-[#1A1A1A] border border-[#333333] rounded-lg px-4 text-[#E5E5E5] placeholder-gray-500 focus:outline-none focus:border-[#505050] focus:ring-1 focus:ring-[#505050] text-base"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!repoUrl.trim()) {
+                        toast.error("Enter a repository URL");
+                        return;
+                      }
+                      setRepoLoading(true);
+                      setRepoError(null);
+                      try {
+                        const parsed = parseGitHubRepoUrl(repoUrl.trim());
+                        if (!parsed) {
+                          throw new Error("Invalid repository URL format");
+                        }
+                        const files = await loadGitHubSolidityFiles(repoUrl.trim(), {
+                          token: repoToken ? sanitizeTokenInput(repoToken) : undefined,
+                        });
+                        if (files.length === 0) {
+                          toast.error("No Solidity (.sol) files found");
+                        }
+                        setRepoFiles(files);
+                        // reset analysis state
+                        setAnalysisFiles([]);
+                        setUploadedFiles([]);
+                        toast.success(`Loaded ${files.length} .sol file(s)`);
+                      } catch (err: any) {
+                        console.error(err);
+                        setRepoError(err.message || "Failed to load repository");
+                        toast.error("Failed to load repository");
+                      } finally {
+                        setRepoLoading(false);
+                      }
+                    }}
+                    disabled={repoLoading}
+                    className="h-11 inline-flex items-center gap-2 px-5 bg-[#1E1E1E] text-mush-orange text-base font-normal border border-[#333333] rounded-lg transition-all duration-300 hover:bg-mush-orange/10 hover:border-mush-orange/50 disabled:opacity-50"
+                  >
+                    {repoLoading ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        <span>Loading...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Load Repo</span>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm text-gray-300">Optional GitHub Token (increases rate limits)</label>
+                  <input
+                    type="password"
+                    placeholder="ghp_..."
+                    value={repoToken}
+                    onChange={(e) => setRepoToken(e.target.value)}
+                    className="h-11 bg-[#1A1A1A] border border-[#333333] rounded-lg px-4 text-[#E5E5E5] placeholder-gray-500 focus:outline-none focus:border-[#505050] focus:ring-1 focus:ring-[#505050] text-base"
+                  />
+                </div>
+                {repoError && <p className="text-sm text-red-400">{repoError}</p>}
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-[#333333] pt-6">
+                <label className="text-sm text-gray-300">Local Cloned Repository Folder</label>
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="file"
+                    // @ts-ignore - non standard attribute
+                    webkitdirectory=""
+                    multiple
+                    accept=".sol"
+                    onChange={async (e) => {
+                      const fileList = e.target.files;
+                      if (!fileList) return;
+                      const arr = Array.from(fileList).filter(f => f.name.endsWith(".sol"));
+                      if (arr.length === 0) {
+                        toast.error("No .sol files in selected folder");
+                        return;
+                      }
+                      const contractFiles: ContractFile[] = await Promise.all(arr.map(async (file) => ({
+                        name: file.name,
+                        path: (file as any).webkitRelativePath || file.name,
+                        content: await file.text(),
+                      })));
+                      setRepoFiles(contractFiles);
+                      setAnalysisFiles([]);
+                      setUploadedFiles([]);
+                      toast.success(`Loaded ${contractFiles.length} local .sol file(s)`);
+                    }}
+                    className="block w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-[#252526] file:text-mush-orange hover:file:bg-[#333] cursor-pointer"
+                  />
+                  <p className="text-xs text-gray-500">Directory selection requires Chromium-based browsers or Safari (File System API). Files stay local.</p>
+                </div>
+              </div>
+
+              {repoFiles.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="text-sm text-gray-400 flex items-center justify-between">
+                    <span>Loaded files ({repoFiles.length})</span>
+                    <button
+                      onClick={() => { setRepoFiles([]); setAnalysisFiles([]); }}
+                      className="text-xs text-gray-500 hover:text-gray-300"
+                    >Clear</button>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto space-y-2">
+                    {repoFiles.map((file) => (
+                      <div key={file.path} className="flex items-center justify-between p-3 bg-[#1A1A1A] border border-[#333333] rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <FileIcon className="w-4 h-4 text-gray-400" />
+                          <span className="text-gray-300 text-xs truncate max-w-[220px]" title={file.path}>{file.path}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {repoFiles.length > 0 && (
+                <>
+                  <button
+                    onClick={() => setIsAIConfigModalOpen(true)}
+                    className="self-end h-11 inline-flex items-center gap-2 px-5 bg-[#1E1E1E] text-mush-orange text-base font-normal border border-[#333333] rounded-lg transition-all duration-300 hover:bg-mush-orange/10 hover:border-mush-orange/50"
+                  >
+                    <span>Analyze Repository</span>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                  <AIConfigModal
+                    isOpen={isAIConfigModalOpen}
+                    onClose={() => setIsAIConfigModalOpen(false)}
+                    onStartAnalysis={async () => {
+                      if (repoFiles.length === 0) {
+                        toast.error("No repository files loaded");
+                        return;
+                      }
+                      try {
+                        setIsAnalyzing(true);
+                        setIsAIConfigModalOpen(false);
+                        const controller = new AbortController();
+                        setAbortController(controller);
+                        const result = await analyzeContract({
+                          files: repoFiles,
+                          contractName: "RepositoryContracts",
+                          signal: controller.signal,
+                          isMultiFile: true,
+                          analysisMode: 'protocol'
+                        });
+                        let analysisContent = result.report.analysis;
+                        if (!analysisContent.match(/^#\s+/m)) {
+                          analysisContent = `# Smart Contract Security Analysis Report\n\n${analysisContent}`;
+                        }
+                        let languageCfg = getAIConfig(config).language;
+                        languageCfg = languageCfg === "english" ? "" : `-${languageCfg}`;
+                        let withSuperPrompt = getAIConfig(config).superPrompt ? "-SuperPrompt" : "";
+                        const reportFileName = `report-analysis-${getModelName(getAIConfig(config))}${languageCfg}${withSuperPrompt}.md`;
+                        const reportFile = { name: reportFileName, path: reportFileName, content: analysisContent };
+                        setAnalysisFiles((prev) => {
+                          const filesWithoutCurrentModelReport = prev.filter((f) => f.path !== reportFileName);
+                          return [...filesWithoutCurrentModelReport, reportFile];
+                        });
+                        toast.success("Repository analysis completed");
+                      } catch (err) {
+                        console.error(err);
+                        toast.error("Repository analysis failed");
+                      } finally {
+                        setIsAnalyzing(false);
+                        setAbortController(null);
+                      }
+                    }}
+                  />
+                </>
+              )}
+
+              {analysisFiles.length > 0 && repoFiles.length > 0 && (
+                <div className="border-t border-[#333333] mt-4 pt-4">
+                  <h3 className="text-gray-300 text-sm font-medium mb-2">Analysis Reports:</h3>
+                  <div className="space-y-2">
+                    {analysisFiles.map((file) => (
+                      <div key={file.path} className="bg-[#252526] p-3 rounded-lg border border-[#333333]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-300 text-sm">{file.name}</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleViewReport(file.content, file.name)}
+                              className="text-gray-400 text-sm hover:text-gray-300 flex items-center gap-1 px-2 py-1 rounded hover:bg-[#333333] transition-colors duration-150"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                              View
+                            </button>
+                            <button
+                              onClick={() => handleDownloadReport(file)}
+                              className="text-gray-400 text-sm hover:text-gray-300 flex items-center gap-1 px-2 py-1 rounded hover:bg-[#333333] transition-colors duration-150"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                              Download
+                            </button>
+                            <button
+                              onClick={() => handleRemoveReport(file.path)}
+                              className="text-gray-400 hover:text-red-400 p-1 rounded hover:bg-[#333333] transition-colors duration-150"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {activeTab === "address" && (
             <div className="flex items-center gap-4">

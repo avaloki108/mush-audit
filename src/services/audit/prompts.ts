@@ -51,34 +51,48 @@ Example format:
 
 Focus on these specific vulnerabilities and make sure the logic is correct:
 
-a) Access Control & Authorization
+a) Access Control & Authorization (Updated 2024-2025)
 - Missing or insufficient access controls
 - Unprotected initialization
 - Unverified external calls
 - Arbitrary external calls
-- Incorrect validation of signatures
+- Incorrect validation of signatures (EIP-712, EIP-2098)
 - Function visibility modifiers
 - Privileged operations
 - Default visibilities
 - tx.origin Authentication
+- Missing two-step ownership transfer
+- Lack of timelock for critical operations
+- Signature replay attacks across chains (EIP-155)
+- Missing access control on callback functions
+- Improper role management in AccessControl
+- Centralization risks with single admin/owner
 
-b) Price & Oracle Manipulation
-- Price manipulation in DEX pools
+b) Price & Oracle Manipulation (2024-2025 Focus)
+- Price manipulation in DEX pools (Uniswap V3/V4, Curve)
 - Stale or manipulated price data
-- Flash loan attack vectors
+- Flash loan attack vectors (Aave V3, Balancer V2)
 - Sandwich attack vulnerabilities
-- Oracle manipulation risks
+- Oracle manipulation risks (Chainlink, Pyth, API3)
 - Price oracle dependencies
+- Time-Weighted Average Price (TWAP) manipulation
+- Just-In-Time (JIT) liquidity attacks
+- Donation attacks on LP tokens
+- Multi-block MEV attacks
+- Read-only reentrancy in oracle callbacks
+- Inconsistent decimal handling between oracles
+- Oracle front-running and back-running
 
-c) Logic & Validation Flaws
+c) Logic & Validation Flaws (2024-2025 Updates)
 - Reentrancy vulnerabilities
   * State changes after external calls
   * Recursive calls through fallback functions
   * Cross-function reentrancy
+  * Cross-contract reentrancy
   * Read-only reentrancy
   * Missing or incorrectly placed ReentrancyGuard
-  * Incorrect ordering of state updates
-- Integer overflow/underflow
+  * Incorrect ordering of state updates (CEI pattern violations)
+- Integer overflow/underflow (even with Solidity 0.8+)
 - Arithmetic Over/Under Flows
 - Precision loss and rounding errors
 - Business logic flaws
@@ -86,19 +100,27 @@ c) Logic & Validation Flaws
 - Incorrect state transitions
 - Missing validation checks
 - Floating Points and Numerical Precision
+- Off-by-one errors in loops and calculations
+- Divide-before-multiply issues
+- Unsafe type casting
+- Array out-of-bounds access
+- Unhandled return values from low-level calls
 
-d) Protocol-Specific Risks
-- Flash loan attack vectors
-- MEV vulnerabilities
+d) Protocol-Specific Risks (2024-2025 Critical Updates)
+- Flash loan attack vectors (Aave V3, Balancer, Euler)
+- MEV vulnerabilities (PBS, flashbots)
 - Cross-function reentrancy
+- Cross-contract reentrancy
 - Cross-protocol interactions
-- Proxy implementation flaws
-- Incorrect initialization
+- Proxy implementation flaws (UUPS, Transparent, Beacon)
+- Incorrect initialization (initializer modifier)
 - Upgrade mechanism flaws
+- Storage collision in upgradeable contracts
+- Uninitialized implementation contracts
 - Unexpected Ether handling
-- Forcibly sent ether through selfdestruct
+- Forcibly sent ether through selfdestruct/SELFDESTRUCT deprecation (EIP-6049)
 - Pre-sent ether handling
-- First Depositor Vulnerability
+- First Depositor Vulnerability (Inflation Attacks)
   * Price manipulation during initial deposit
   * Share calculation exploitation with minimal deposits
   * Missing minimum deposit amount checks
@@ -107,30 +129,57 @@ d) Protocol-Specific Risks
   * Initial share ratio manipulation
   * Missing checks for pool initialization
   * Absence of minimum liquidity locks
+  * ERC4626 vault share inflation attacks
+- LayerZero/Cross-chain bridge vulnerabilities
+- Account Abstraction (EIP-4337) specific risks
+- ERC-2771 meta-transaction replay attacks
+- Permit2 integration issues
+- EIP-1271 signature validation flaws
 
-e) Token-Related Issues
+e) Token-Related Issues (2024-2025 Enhanced)
 - ERC20 approval/transfer issues
 - Fee-on-transfer token handling
-- Rebasing token compatibility
+- Rebasing token compatibility (stETH, aToken)
 - Token balance manipulation
 - Reflection token issues
-- Missing return value checks
+- Missing return value checks (USDT, BNB)
 - Incorrect decimals handling
 - Short Address/Parameter Attack
+- ERC-777 reentrancy hooks
+- ERC-4626 vault vulnerabilities
+- Permit function replay attacks (EIP-2612)
+- Flash-mintable token exploits
+- Deflationary token incompatibility
+- Double-entry token accounting
+- Token metadata manipulation
+- Non-standard ERC20 implementations
+- Pausable token edge cases
+- Token blacklist/whitelist bypass
 
-f) System & Integration Risks
+f) System & Integration Risks (2024-2025 Updates)
 - Centralization points
-- Upgrade mechanism flaws
-- Cross-chain bridge vulnerabilities
+- Upgrade mechanism flaws (UUPS vs Transparent proxy)
+- Cross-chain bridge vulnerabilities (Wormhole, LayerZero, Axelar)
 - External protocol dependencies
 - Composability risks
 - Third-party contract interactions
 - External call failures
-- Delegatecall risks
+- Delegatecall risks (context preservation)
 - Storage layout in proxy contracts
+- Multi-signature wallet dependencies
+- Governance attack vectors
+- Protocol parameter manipulation
+- Dependency on deprecated functions
+- Integration with malicious contracts
+- Callback validation issues
+- Gas griefing in external calls
+- Block gas limit DoS
+- Reliance on off-chain infrastructure
+- Sequencer downtime handling (L2s)
+- Blob transaction compatibility (EIP-4844)
 
-g) Additional Security Considerations
-- Front-running vulnerabilities
+g) Additional Security Considerations (2024-2025 Critical)
+- Front-running vulnerabilities (PBS era)
 - Race Conditions
 - Timestamp manipulation
 - Block Timestamp Manipulation
@@ -139,10 +188,75 @@ g) Additional Security Considerations
 - Block number manipulation
 - Randomness manipulation
 - Entropy Illusion
-- Storage collision
+- Storage collision in upgradeable contracts
 - Constructors with Care
 - Uninitialised Storage Pointers
 - Unchecked CALL Return Values
+- Unchecked transfer return values
+- Insufficient gas griefing
+- Unbounded loops and gas limits
+- State bloat attacks
+- Signature malleability (ECDSA)
+- EIP-1559 base fee manipulation
+- Maximal Extractable Value (MEV) exploitation
+- Slippage manipulation
+- Deadline parameter issues
+- Callback-related vulnerabilities
+- ERC-165 interface detection bypass
+- Function selector collision
+- Fallback/receive function risks
+- Gas stipend exhaustion (2300 gas)
+- CREATE2 address prediction attacks
+- Contract size limit bypass (24KB)
+- Immutable variable initialization issues
+
+h) 2024-2025 Emerging Threats & Recent Exploit Patterns
+- ERC-4337 Account Abstraction vulnerabilities
+  * Paymaster validation bypass
+  * User operation replay attacks
+  * Entry point griefing
+  * Signature aggregator exploits
+- Layer 2 / Rollup specific issues
+  * L1→L2 message manipulation
+  * Sequencer centralization risks
+  * Forced transaction inclusion attacks
+  * Cross-layer reentrancy
+  * Blob transaction handling (EIP-4844)
+- DeFi 3.0 Protocol Risks
+  * Liquid staking derivative (LSD) depeg risks
+  * Real World Asset (RWA) oracle dependencies
+  * Points/Airdrop farming exploits
+  * Restaking protocol risks (EigenLayer)
+- MEV & Censorship Resistance
+  * PBS (Proposer-Builder Separation) vulnerabilities
+  * Private mempool exploitation
+  * Builder censorship risks
+  * Time-bandit attacks
+- Intent-based Architecture Risks
+  * Solver manipulation
+  * Intent relay censorship
+  * Cross-domain intent conflicts
+- Permit2 Integration Issues
+  * Allowance front-running
+  * Signature reuse across contracts
+  * Nonce management flaws
+- AI-Generated Code Vulnerabilities
+  * Hidden backdoors in AI-written contracts
+  * Logic flaws from incomplete specifications
+  * Copy-paste vulnerabilities from AI suggestions
+- Zero-Knowledge Proof Issues
+  * Trusted setup compromise
+  * Proof malleability
+  * Soundness violations
+  * Verifier implementation bugs
+- Recent Major Exploit Patterns (2024-2025)
+  * Read-only reentrancy (Curve Finance style)
+  * Share price inflation attacks (ERC4626 vaults)
+  * Cross-chain bridge message replay
+  * Oracle manipulation via flash loans
+  * Governance takeover attacks
+  * Rounding error accumulation
+  * Precision loss in complex calculations
 
 ## Detailed Analysis
 - Architecture: Contract structure and interaction patterns

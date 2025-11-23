@@ -27,10 +27,12 @@ export default function AIConfigModal({
       claudeKey: "",
       geminiKey: "",
       xaiKey: "",
+      groqKey: "",
+      ollamaUrl: "http://localhost:11434",
       selectedModel: GPT_MODELS[0].id,
       language: "english",
       superPrompt: true,
-    };
+    } as AIConfig;
 
     const savedConfig = localStorage.getItem('ai_config');
     if (savedConfig) {
@@ -65,6 +67,8 @@ export default function AIConfigModal({
       claude: { claudeKey: value },
       gemini: { geminiKey: value },
       xai: { xaiKey: value },
+      groq: { groqKey: value },
+      ollama: { ollamaUrl: value },
     };
 
     setConfig((prev) => ({
@@ -260,6 +264,8 @@ export default function AIConfigModal({
                 claudeKey: "",
                 geminiKey: "",
                 xaiKey: "",
+                groqKey: "",
+                ollamaUrl: "http://localhost:11434",
                 selectedModel: GPT_MODELS[0].id,
                 language: "english",
                 superPrompt: true,

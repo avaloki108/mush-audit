@@ -78,7 +78,7 @@ Mush Audit is an AI-powered smart contract security analysis platform that lever
 ### Installation
 1. Clone the repository: 
    ```bash
-   git clone https://github.com/mush-support/mush-audit
+   git clone https://github.com/avaloki108/mush-audit
    ```
 2. Navigate to the directory:
    ```bash

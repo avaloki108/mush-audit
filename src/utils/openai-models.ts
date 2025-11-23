@@ -9,41 +9,49 @@ export interface OpenAIModel {
 
 export const GPT_MODELS: OpenAIModel[] = [
   {
-    id: "o1-mini",
-    name: "o1-mini",
-    description: "Compact version of Opus One model",
-    contextWindow: 128000,
-    trainingData: "Up to Jan 2024",
-    supportsTemperature: false,
+    id: "gpt-4.1",
+    name: "GPT-4.1",
+    description: "Newest flagship GPT-4.1 model for general-purpose tasks",
+    contextWindow: 200000,
+    trainingData: "Up to Dec 2024",
+    supportsTemperature: true,
   },
   {
-    id: "o1-preview",
-    name: "o1-preview",
-    description: "Preview version of next-generation Opus One model",
+    id: "gpt-4.1-mini",
+    name: "GPT-4.1 Mini",
+    description: "Cost-efficient GPT-4.1 variant with strong quality",
     contextWindow: 128000,
-    trainingData: "Up to Jan 2024",
+    trainingData: "Up to Dec 2024",
+    supportsTemperature: true,
+  },
+  {
+    id: "o1-mini",
+    name: "o1-mini",
+    description: "Fast reasoning model for tool-free tasks",
+    contextWindow: 128000,
+    trainingData: "Reasoning data (undisclosed)",
     supportsTemperature: false,
   },
   {
     id: "o1",
     name: "o1",
-    description: "Standard Opus One model with extended context window",
+    description: "Reasoning-focused model for complex, multi-step problems",
     contextWindow: 200000,
-    trainingData: "Up to Dec 2024",
+    trainingData: "Reasoning data (undisclosed)",
     supportsTemperature: false,
   },
   {
     id: "gpt-4o-mini",
     name: "gpt-4o-mini",
-    description: "Lightweight version of GPT-4 Opus optimized for efficiency",
-    contextWindow: 8000,
-    trainingData: "Up to Jan 2024",
+    description: "Lightweight Omni model optimized for efficiency and speed",
+    contextWindow: 128000,
+    trainingData: "Up to Oct 2023",
     supportsTemperature: true,
   },
   {
     id: "chatgpt-4o-latest",
     name: "chatgpt-4o-latest",
-    description: "Latest version of ChatGPT-4 Opus with continuous updates",
+    description: "Alias tracking the most recent ChatGPT-4o release",
     contextWindow: 128000,
     trainingData: "Continuous updates",
     supportsTemperature: true,
@@ -51,25 +59,17 @@ export const GPT_MODELS: OpenAIModel[] = [
   {
     id: "gpt-4o",
     name: "gpt-4o",
-    description: "Standard GPT-4 Opus model for general use",
-    contextWindow: 8192,
-    trainingData: "Up to Jan 2024",
-    supportsTemperature: true,
-  },
-  {
-    id: "gpt-4o-2024-11-20",
-    name: "gpt-4o-2024-11-20",
-    description: "Version-specific GPT-4 Opus with November 2024 training",
-    contextWindow: 8192,
-    trainingData: "Up to Nov 2024",
-    supportsTemperature: true,
-  },
-  {
-    id: "gpt-4-turbo",
-    name: "gpt-4-turbo",
-    description: "High-performance GPT-4 model with enhanced capabilities",
+    description: "Omni flagship model for text and image inputs",
     contextWindow: 128000,
-    trainingData: "Up to Dec 2023",
+    trainingData: "Up to Oct 2023",
+    supportsTemperature: true,
+  },
+  {
+    id: "gpt-3.5-turbo-0125",
+    name: "gpt-3.5-turbo-0125",
+    description: "Legacy economical model for lightweight workloads",
+    contextWindow: 16385,
+    trainingData: "Up to Sep 2021",
     supportsTemperature: true,
   },
 ];
@@ -84,5 +84,5 @@ export const getModelById = (modelId: string): OpenAIModel | undefined => {
 
 // Get default model
 export const getDefaultModel = (): OpenAIModel => {
-  return GPT_MODELS[0]; // Returns gpt-4o as default
+  return GPT_MODELS[0]; // Returns gpt-4.1 as default
 };

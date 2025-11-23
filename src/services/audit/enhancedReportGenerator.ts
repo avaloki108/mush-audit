@@ -67,29 +67,6 @@ export interface EnhancedAuditReport {
 
 export class EnhancedReportGenerator {
 
-  /**
-   * Strict filtering to remove "garbage" findings.
-   */
-  private filterGarbage(findings: VulnerabilityFinding[]): VulnerabilityFinding[] {
-    return findings.filter(f => {
-        // 1. Discard purely stylistic / info issues unless they have High impact
-        if (f.severity === 'Low' && !f.economicImpact) return false;
-        if (f.title.toLowerCase().includes('style') || f.title.toLowerCase().includes('comment')) return false;
-
-        // 2. Discard "Gas Optimization" disguised as vulnerabilities
-        if (f.title.toLowerCase().includes('gas') && f.severity !== 'Low') {
-            // Downgrade gas issues if they are marked critical
-            f.severity = 'Low';
-            return true; // Keep them but categorized correctly
-        }
-
-        // 3. Discard vague "Best Practice" warnings without specific location
-        if (f.location === 'Global' && f.title.includes('Best Practice')) return false;
-
-        return true;
-    });
-  }
-
   generateExploitScenarios(findings: VulnerabilityFinding[]): ExploitScenario[] {
     const scenarios: ExploitScenario[] = [];
 
@@ -462,12 +439,8 @@ describe("Bridge Message Replay", function () {
     // NEW: Filter out garbage findings first
     const filteredVulnerabilities = this.filterGarbageFindings(params.vulnerabilities);
     
+    // Prioritize the filtered vulnerabilities
     const prioritizedVulnerabilities = this.prioritizeVulnerabilities(filteredVulnerabilities);
-    // 1. Filter Garbage first
-    const cleanFindings = this.filterGarbage(params.vulnerabilities);
-    
-    // 2. Prioritize
-    const prioritizedVulnerabilities = this.prioritizeVulnerabilities(cleanFindings);
     
     const exploitScenarios = this.generateExploitScenarios(prioritizedVulnerabilities);
     const economicAnalysis = this.calculateEconomicImpact(prioritizedVulnerabilities);

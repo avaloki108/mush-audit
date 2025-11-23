@@ -166,24 +166,9 @@ function analyzeContractDependencies(contract: ContractFile, allContracts: Contr
           : 'External call - potential reentrancy risk'
       });
     }
-function parseAccessControl(contract: ContractFile): AccessControlMap['string'] {
-  const accessMap: AccessControlMap['string'] = {};
-  const functionRegex = /function\s+(\w+)[^{]+(only\w+|auth|guard|nonReentrant)/g;
-  let match;
-  while ((match = functionRegex.exec(contract.content)) !== null) {
-    const func = match[1];
-    const mod = match[2];
-    if (!accessMap[func]) accessMap[func] = [];
-    accessMap[func].push(mod);
   }
-  return accessMap;
-}
 
-function analyzeContractDependencies(contract: ContractFile, allContracts: ContractFile[]): DependencyEdge[] {
-  const edges: DependencyEdge[] = [];
-  const content = contract.content;
-
-  // Detect Calls to Specific Contracts
+  // 3. Detect Calls to Specific Contracts by name
   allContracts.forEach(target => {
     if (contract.name === target.name) return;
     
@@ -199,7 +184,7 @@ function analyzeContractDependencies(contract: ContractFile, allContracts: Contr
     }
   });
 
-  // Detect Untrusted External Calls (The "Phishing" Vector)
+  // 4. Detect Untrusted External Calls (The "Phishing" Vector)
   // Looking for: userParams.call() or msg.sender.call()
   if (/(msg\.sender|tx\.origin|_[\w]+)\.(call|transfer|send)/.test(content)) {
     edges.push({
@@ -214,6 +199,19 @@ function analyzeContractDependencies(contract: ContractFile, allContracts: Contr
   }
 
   return edges;
+}
+
+function parseAccessControl(contract: ContractFile): AccessControlMap['string'] {
+  const accessMap: AccessControlMap['string'] = {};
+  const functionRegex = /function\s+(\w+)[^{]+(only\w+|auth|guard|nonReentrant)/g;
+  let match;
+  while ((match = functionRegex.exec(contract.content)) !== null) {
+    const func = match[1];
+    const mod = match[2];
+    if (!accessMap[func]) accessMap[func] = [];
+    accessMap[func].push(mod);
+  }
+  return accessMap;
 }
 
 // --- Vulnerability Detectors ---
@@ -395,6 +393,20 @@ function findContractByType(typeName: string, contracts: ContractFile[]): Contra
     // Contract name includes the type (e.g., ERC20 matches IERC20)
     c.name.includes(typeName) ||
     typeName.includes(c.name)
+  );
+}
+
+/**
+ * Find contract by variable name
+ */
+function findContractByName(varName: string, contracts: ContractFile[]): ContractFile | undefined {
+  return contracts.find(c =>
+    // Exact match
+    c.name === varName ||
+    // Case-insensitive match
+    c.name.toLowerCase() === varName.toLowerCase() ||
+    // Content contains the variable
+    c.content.includes(varName)
   );
 }
 

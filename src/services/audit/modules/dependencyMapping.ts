@@ -853,6 +853,9 @@ function detectGovernanceAttacks(
 }
 
 
+// Primitive types to exclude from type resolution
+const PRIMITIVE_TYPES = ['uint256', 'uint', 'address', 'bool', 'bytes32', 'bytes'];
+
 /**
  * NEW: Extract variable types from contract code for improved call resolution
  */
@@ -861,14 +864,14 @@ function extractVariableTypes(contractCode: string): Map<string, string> {
 
   // Pattern 1: State variable declarations with contract types
   // e.g., "IERC20 public token;" or "IUniswapV2Router private router;"
-  const stateVarPattern = /(public|private|internal)?\s+([A-Z]\w+)\s+(?:public|private|internal)?\s+(\w+)\s*[;=]/g;
+  const stateVarPattern = /(?:public|private|internal)\s+([A-Z]\w+)\s+(\w+)\s*[;=]/g;
   let match;
   
   while ((match = stateVarPattern.exec(contractCode)) !== null) {
-    const type = match[2];
-    const varName = match[3];
+    const type = match[1];
+    const varName = match[2];
     // Filter out primitive types
-    if (type && varName && !["uint256", "uint", "address", "bool", "bytes32", "bytes"].includes(type)) {
+    if (type && varName && !PRIMITIVE_TYPES.includes(type)) {
       typeMap.set(varName, type);
     }
   }
@@ -880,7 +883,7 @@ function extractVariableTypes(contractCode: string): Map<string, string> {
   while ((match = localVarPattern.exec(contractCode)) !== null) {
     const type = match[1];
     const varName = match[2];
-    if (type && varName && !["uint256", "uint", "address", "bool", "bytes32", "bytes"].includes(type)) {
+    if (type && varName && !PRIMITIVE_TYPES.includes(type)) {
       typeMap.set(varName, type);
     }
   }
@@ -892,7 +895,7 @@ function extractVariableTypes(contractCode: string): Map<string, string> {
   while ((match = paramPattern.exec(contractCode)) !== null) {
     const type = match[1];
     const varName = match[2];
-    if (type && varName && !["uint256", "uint", "address", "bool", "bytes32", "bytes"].includes(type)) {
+    if (type && varName && !PRIMITIVE_TYPES.includes(type)) {
       typeMap.set(varName, type);
     }
   }

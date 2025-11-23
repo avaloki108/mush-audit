@@ -968,18 +968,24 @@ export class StateFlowAnalyzer {
   /**
    * Trace variable types from contract code to improve call resolution
    */
+  /**
+   * Trace variable types from contract code to improve call resolution
+   */
   private traceVariableTypes(contractCode: string): Map<string, string> {
     const typeMap = new Map<string, string>();
 
+    // Primitive types to exclude
+    const primitiveTypes = ['uint256', 'uint', 'address', 'bool', 'bytes32', 'bytes'];
+
     // Pattern 1: State variable declarations with explicit types
-    // e.g., "IERC20 public token;"
-    const stateVarPattern = /(public|private|internal)?\s+([A-Z]\w+)\s+(?:public|private|internal)?\s+(\w+)\s*[;=]/g;
+    // e.g., "IERC20 public token;" or "IUniswapV2Router private router;"
+    const stateVarPattern = /(?:public|private|internal)\s+([A-Z]\w+)\s+(\w+)\s*[;=]/g;
     let match;
     
     while ((match = stateVarPattern.exec(contractCode)) !== null) {
-      const type = match[2];
-      const varName = match[3];
-      if (type && varName && type !== 'uint256' && type !== 'address' && type !== 'bool') {
+      const type = match[1];
+      const varName = match[2];
+      if (type && varName && !primitiveTypes.includes(type)) {
         typeMap.set(varName, type);
       }
     }
@@ -991,7 +997,7 @@ export class StateFlowAnalyzer {
     while ((match = localVarPattern.exec(contractCode)) !== null) {
       const type = match[1];
       const varName = match[2];
-      if (type && varName && type !== 'uint256' && type !== 'address' && type !== 'bool') {
+      if (type && varName && !primitiveTypes.includes(type)) {
         typeMap.set(varName, type);
       }
     }

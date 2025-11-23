@@ -25,6 +25,9 @@ export interface CrossChainAnalyzer {
 }
 
 export class CrossChainAnalyzerImpl implements CrossChainAnalyzer {
+  // Regex patterns as class constants for performance
+  private static readonly SIGNATURE_PATTERN = /signature|ecrecover|verify|ECDSA/;
+  private static readonly CROSS_CHAIN_PATTERN = /bridge|cross-chain|crosschain|relay|message/;
 
   detectBridgeMessageReplay(code: string): VulnerabilityFinding[] {
     const findings: VulnerabilityFinding[] = [];
@@ -575,8 +578,8 @@ victim.processWormholeMessage(fakeVAA); // Succeeds without signature check
     const findings: VulnerabilityFinding[] = [];
 
     // Check for signature-based cross-chain operations
-    const hasSignatures = /signature|ecrecover|verify|ECDSA/.test(code);
-    const isCrossChain = /bridge|cross-chain|crosschain|relay|message/.test(code);
+    const hasSignatures = CrossChainAnalyzerImpl.SIGNATURE_PATTERN.test(code);
+    const isCrossChain = CrossChainAnalyzerImpl.CROSS_CHAIN_PATTERN.test(code);
 
     if (hasSignatures && isCrossChain) {
       
@@ -678,17 +681,26 @@ bytes32 messageHash = keccak256(abi.encodePacked(
         }
 
         // 5. Check for signature malleability
-        if (code.includes('ecrecover') && !code.includes('v == 27 || v == 28')) {
-          findings.push({
-            title: 'ECDSA Signature Malleability',
-            severity: 'Low',
-            description: 'Signature validation vulnerable to malleability attacks.',
-            impact: 'Attacker can create multiple valid signatures for same message.',
-            location: 'ecrecover usage',
-            recommendation: 'Use OpenZeppelin ECDSA library or validate v parameter (v == 27 || v == 28).',
-            exploitScenario: 'Create alternate signature to bypass nonce checks',
-            economicImpact: 'Can bypass some replay protections'
-          });
+        if (code.includes('ecrecover')) {
+          // Check for v parameter validation (various forms)
+          const hasVValidation = 
+            /v\s*==\s*27/.test(code) || 
+            /v\s*==\s*28/.test(code) ||
+            /require.*v.*27|28/.test(code) ||
+            /ECDSA\.recover/.test(code); // OpenZeppelin lib handles this
+          
+          if (!hasVValidation) {
+            findings.push({
+              title: 'ECDSA Signature Malleability',
+              severity: 'Low',
+              description: 'Signature validation vulnerable to malleability attacks.',
+              impact: 'Attacker can create multiple valid signatures for same message.',
+              location: 'ecrecover usage',
+              recommendation: 'Use OpenZeppelin ECDSA library or validate v parameter (v == 27 || v == 28).',
+              exploitScenario: 'Create alternate signature to bypass nonce checks',
+              economicImpact: 'Can bypass some replay protections'
+            });
+          }
         }
       }
 

@@ -360,6 +360,91 @@ describe("Bridge Message Replay", function () {
     return testTemplates[finding.title] || null;
   }
 
+  /**
+   * NEW: Filter out low-value findings (garbage) that lack clear path to fund loss
+   * Prioritize findings with PoC and economic impact
+   */
+  filterGarbageFindings(findings: VulnerabilityFinding[]): VulnerabilityFinding[] {
+    return findings.filter(finding => {
+      // Keep all Critical and High severity findings
+      if (finding.severity === 'Critical' || finding.severity === 'High') {
+        return true;
+      }
+
+      // Garbage patterns to filter out
+      const garbagePatterns = [
+        // Stylistic/coding style issues
+        /style|formatting|naming convention|indentation|whitespace/i,
+        /naming pattern|variable name|function name.*should/i,
+        
+        // Gas optimizations disguised as security
+        /gas optimization|save gas|gas efficient|reduce gas/i,
+        /++i.*more efficient|cache.*length|unchecked.*increment/i,
+        /storage.*memory.*cheaper|constant.*immutable.*gas/i,
+        
+        // Low-value informational findings
+        /informational|note:|fyi:/i,
+        /consider using|you could|you may want/i,
+        /best practice.*not.*security/i,
+        
+        // Vague findings without economic impact
+        /potential.*issue.*further.*investigation/i,
+        /may.*need.*review|should.*reviewed/i,
+        
+        // Non-exploitable findings
+        /event.*not.*emit|missing.*event/i,
+        /natspec|comment|documentation|todo/i,
+        /floating.*pragma|solidity.*version.*should/i,
+        /public.*instead.*external/i,
+        
+        // Dead code findings (unless they hide bugs)
+        /unused.*variable|unused.*function|dead code/i,
+        /unreachable.*code/i,
+      ];
+
+      const title = finding.title.toLowerCase();
+      const description = finding.description.toLowerCase();
+      const combined = `${title} ${description}`;
+
+      // Filter out if matches garbage patterns
+      if (garbagePatterns.some(pattern => pattern.test(combined))) {
+        // Exception: Keep if has explicit economic impact
+        if (finding.economicImpact && finding.economicImpact.length > 0) {
+          return true;
+        }
+        // Exception: Keep if has PoC code
+        if (finding.pocCode && finding.pocCode.length > 100) {
+          return true;
+        }
+        return false;
+      }
+
+      // Filter out Medium/Low findings without concrete impact
+      if (finding.severity === 'Medium' || finding.severity === 'Low') {
+        // Require at least one of: economic impact, exploit scenario, or PoC
+        const hasSubstance = 
+          (finding.economicImpact && finding.economicImpact.length > 0) ||
+          (finding.exploitScenario && finding.exploitScenario.length > 50) ||
+          (finding.pocCode && finding.pocCode.length > 100);
+
+        if (!hasSubstance) {
+          return false;
+        }
+
+        // Additional filter: Require clear fund loss path
+        const hasFundLossPath = 
+          /fund.*loss|drain.*fund|steal.*token|theft|exploit.*\$|economic.*damage/i.test(combined) ||
+          /reentrancy|flashloan|oracle.*manipulation|signature.*replay/i.test(combined) ||
+          /access.*control|unauthorized|privilege.*escalation/i.test(combined);
+
+        return hasFundLossPath;
+      }
+
+      // Keep everything else (shouldn't reach here)
+      return true;
+    });
+  }
+
   prioritizeVulnerabilities(findings: VulnerabilityFinding[]): VulnerabilityFinding[] {
     // Sort by severity and likelihood
     const severityWeight = { 'Critical': 4, 'High': 3, 'Medium': 2, 'Low': 1 };
@@ -430,7 +515,10 @@ describe("Bridge Message Replay", function () {
     contractName?: string;
     chain?: string;
   }): Promise<EnhancedAuditReport> {
-    const prioritizedVulnerabilities = this.prioritizeVulnerabilities(params.vulnerabilities);
+    // NEW: Filter out garbage findings first
+    const filteredVulnerabilities = this.filterGarbageFindings(params.vulnerabilities);
+    
+    const prioritizedVulnerabilities = this.prioritizeVulnerabilities(filteredVulnerabilities);
     const exploitScenarios = this.generateExploitScenarios(prioritizedVulnerabilities);
     const economicAnalysis = this.calculateEconomicImpact(prioritizedVulnerabilities);
     const testSuites = this.generateTestTemplates(prioritizedVulnerabilities);

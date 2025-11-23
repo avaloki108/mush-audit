@@ -35,6 +35,7 @@ export interface StateChange {
 
 export interface ExternalCall {
   target: string;
+  targetType?: string; // Variable type (e.g., IERC20, IUniswapV2Router)
   function: string;
   position: 'before' | 'after' | 'during';
   type: 'call' | 'delegatecall' | 'staticcall' | 'transfer' | 'send';
@@ -54,6 +55,7 @@ export interface StateFlowResult {
   criticalPaths: CriticalPath[];
   potentialIssues: StateFlowIssue[];
   stateInvariants: StateInvariant[];
+  crossContractFlows: CrossContractFlow[]; // New field for cross-contract analysis
   recommendations: string[];
 }
 
@@ -72,6 +74,21 @@ export interface StateFlowIssue {
   description: string;
   recommendation: string;
   dataFlow?: string;
+  affectedContracts?: string[]; // For cross-contract issues
+}
+
+export interface CrossContractFlow {
+  sourceContract: string;
+  sourceFunction: string;
+  targetContract: string;
+  targetFunction: string;
+  stateChanges: {
+    beforeCall: StateChange[];
+    inTarget: StateChange[];
+    afterCall: StateChange[];
+  };
+  reentrancyRisk: 'low' | 'medium' | 'high' | 'critical';
+  description: string;
 }
 
 export interface StateInvariant {
@@ -83,8 +100,10 @@ export interface StateInvariant {
 
 export class StateFlowAnalyzer {
   private contractStates: ContractState[];
+  private variableTypes: Map<string, string>; // Maps variable names to their types
 
   constructor(contracts: ContractFile[]) {
+    this.variableTypes = new Map();
     this.contractStates = contracts.map(contract => this.parseContractState(contract));
   }
 
@@ -94,6 +113,7 @@ export class StateFlowAnalyzer {
       criticalPaths: [],
       potentialIssues: [],
       stateInvariants: [],
+      crossContractFlows: [], // Initialize new field
       recommendations: []
     };
 
@@ -103,6 +123,13 @@ export class StateFlowAnalyzer {
       result.criticalPaths.push(...analysis.criticalPaths);
       result.potentialIssues.push(...analysis.potentialIssues);
     });
+
+    // NEW: Analyze cross-contract flows
+    result.crossContractFlows = this.analyzeCrossContractFlows(this.contractStates);
+    
+    // Detect cross-contract reentrancy from flows
+    const crossContractIssues = this.detectCrossContractReentrancy(result.crossContractFlows);
+    result.potentialIssues.push(...crossContractIssues);
 
     // Check protocol-wide state invariants
     result.stateInvariants = this.checkStateInvariants(this.contractStates);
@@ -115,6 +142,12 @@ export class StateFlowAnalyzer {
 
   private parseContractState(contract: ContractFile): ContractState {
     const content = contract.content;
+
+    // Trace variable types for better call resolution
+    const typeMap = this.traceVariableTypes(content);
+    typeMap.forEach((type, varName) => {
+      this.variableTypes.set(varName, type);
+    });
 
     // Extract contract name
     const contractMatch = content.match(/contract\s+(\w+)/);
@@ -364,8 +397,12 @@ export class StateFlowAnalyzer {
         }
       }
 
+      // Resolve variable type for better target identification
+      const targetType = this.variableTypes.get(target);
+
       calls.push({
         target,
+        targetType, // NEW: Include resolved type
         function: '',
         position,
         type: callType
@@ -733,5 +770,232 @@ export class StateFlowAnalyzer {
     const hasPush = /\w+\.push/.test(functionBody);
 
     return hasAssignment || hasIncDec || hasDelete || hasPush;
+  }
+
+  /**
+   * NEW: Analyze cross-contract flows to detect sophisticated reentrancy and state manipulation
+   */
+  analyzeCrossContractFlows(contractStates: ContractState[]): CrossContractFlow[] {
+    const flows: CrossContractFlow[] = [];
+
+    // For each contract
+    contractStates.forEach(sourceContract => {
+      // For each function that makes external calls
+      sourceContract.transitions.forEach(transition => {
+        if (transition.externalCalls.length === 0) return;
+
+        transition.externalCalls.forEach(externalCall => {
+          // Try to resolve the target contract and function
+          const targetInfo = this.resolveExternalCallTarget(
+            externalCall,
+            sourceContract,
+            contractStates
+          );
+
+          if (!targetInfo) return;
+
+          // Analyze state changes before, during, and after the call
+          const stateChanges = this.analyzeStateChangesAroundCall(
+            transition,
+            externalCall,
+            targetInfo.targetContract,
+            targetInfo.targetFunction
+          );
+
+          // Determine reentrancy risk
+          const reentrancyRisk = this.assessCrossContractReentrancyRisk(
+            stateChanges,
+            externalCall
+          );
+
+          flows.push({
+            sourceContract: sourceContract.contractName,
+            sourceFunction: transition.functionName,
+            targetContract: targetInfo.targetContract.contractName,
+            targetFunction: targetInfo.targetFunction || 'unknown',
+            stateChanges,
+            reentrancyRisk,
+            description: `${sourceContract.contractName}.${transition.functionName} calls ${targetInfo.targetContract.contractName}.${targetInfo.targetFunction}`
+          });
+        });
+      });
+    });
+
+    return flows;
+  }
+
+  /**
+   * Resolve external call target by tracing variable types
+   */
+  private resolveExternalCallTarget(
+    externalCall: ExternalCall,
+    sourceContract: ContractState,
+    allContracts: ContractState[]
+  ): { targetContract: ContractState; targetFunction: string } | null {
+    // First, try to get the type from the targetType field (if already resolved)
+    if (externalCall.targetType) {
+      const targetContract = allContracts.find(c => 
+        c.contractName === externalCall.targetType ||
+        c.contractName.includes(externalCall.targetType)
+      );
+      
+      if (targetContract) {
+        return { targetContract, targetFunction: externalCall.function || 'unknown' };
+      }
+    }
+
+    // Try to resolve from state variables
+    const targetVariable = sourceContract.stateVariables.find(v => 
+      v.name === externalCall.target
+    );
+
+    if (targetVariable) {
+      // Extract contract type from variable type (e.g., "IERC20" from "IERC20 token")
+      const typeMatch = targetVariable.type.match(/^([A-Z]\w+)/);
+      if (typeMatch) {
+        const contractType = typeMatch[1];
+        const targetContract = allContracts.find(c => 
+          c.contractName === contractType ||
+          c.contractName.includes(contractType) ||
+          contractType.includes(c.contractName)
+        );
+
+        if (targetContract) {
+          return { targetContract, targetFunction: externalCall.function || 'unknown' };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Analyze state changes before, during, and after external call
+   */
+  private analyzeStateChangesAroundCall(
+    transition: StateTransition,
+    externalCall: ExternalCall,
+    targetContract: ContractState,
+    targetFunction: string
+  ): {
+    beforeCall: StateChange[];
+    inTarget: StateChange[];
+    afterCall: StateChange[];
+  } {
+    const beforeCall: StateChange[] = [];
+    const afterCall: StateChange[] = [];
+    const inTarget: StateChange[] = [];
+
+    // Categorize state changes by position relative to call
+    transition.stateChanges.forEach(change => {
+      if (externalCall.position === 'before') {
+        afterCall.push(change);
+      } else if (externalCall.position === 'after') {
+        beforeCall.push(change);
+      }
+    });
+
+    // Get state changes in target function
+    const targetTransition = targetContract.transitions.find(t => 
+      t.functionName === targetFunction
+    );
+    
+    if (targetTransition) {
+      inTarget.push(...targetTransition.stateChanges);
+    }
+
+    return { beforeCall, inTarget, afterCall };
+  }
+
+  /**
+   * Assess cross-contract reentrancy risk
+   */
+  private assessCrossContractReentrancyRisk(
+    stateChanges: {
+      beforeCall: StateChange[];
+      inTarget: StateChange[];
+      afterCall: StateChange[];
+    },
+    externalCall: ExternalCall
+  ): 'low' | 'medium' | 'high' | 'critical' {
+    // Critical: State changes after external call + target modifies state
+    if (stateChanges.afterCall.length > 0 && stateChanges.inTarget.length > 0) {
+      return 'critical';
+    }
+
+    // High: State changes after external call (even if target state unknown)
+    if (stateChanges.afterCall.length > 0) {
+      return 'high';
+    }
+
+    // Medium: delegatecall always risky
+    if (externalCall.type === 'delegatecall') {
+      return 'high';
+    }
+
+    // Low: State changes before call only
+    if (stateChanges.beforeCall.length > 0 && stateChanges.afterCall.length === 0) {
+      return 'low';
+    }
+
+    return 'medium';
+  }
+
+  /**
+   * Detect cross-contract reentrancy from analyzed flows
+   */
+  private detectCrossContractReentrancy(flows: CrossContractFlow[]): StateFlowIssue[] {
+    const issues: StateFlowIssue[] = [];
+
+    flows.forEach(flow => {
+      if (flow.reentrancyRisk === 'critical' || flow.reentrancyRisk === 'high') {
+        issues.push({
+          type: 'Cross-Contract Reentrancy',
+          severity: flow.reentrancyRisk === 'critical' ? 'Critical' : 'High',
+          contract: flow.sourceContract,
+          function: flow.sourceFunction,
+          description: `Function ${flow.sourceFunction} calls ${flow.targetContract}.${flow.targetFunction} and modifies state afterwards, creating cross-contract reentrancy risk`,
+          recommendation: 'Follow checks-effects-interactions pattern: update all state before making external calls. Use ReentrancyGuard modifier.',
+          dataFlow: `${flow.sourceContract}.${flow.sourceFunction} -> ${flow.targetContract}.${flow.targetFunction} -> potential reentry -> state corruption`,
+          affectedContracts: [flow.sourceContract, flow.targetContract]
+        });
+      }
+    });
+
+    return issues;
+  }
+
+  /**
+   * Trace variable types from contract code to improve call resolution
+   */
+  private traceVariableTypes(contractCode: string): Map<string, string> {
+    const typeMap = new Map<string, string>();
+
+    // Pattern 1: State variable declarations with explicit types
+    // e.g., "IERC20 public token;"
+    const stateVarPattern = /(public|private|internal)?\s+([A-Z]\w+)\s+(?:public|private|internal)?\s+(\w+)\s*[;=]/g;
+    let match;
+    
+    while ((match = stateVarPattern.exec(contractCode)) !== null) {
+      const type = match[2];
+      const varName = match[3];
+      if (type && varName && type !== 'uint256' && type !== 'address' && type !== 'bool') {
+        typeMap.set(varName, type);
+      }
+    }
+
+    // Pattern 2: Local variable declarations
+    // e.g., "IUniswapV2Router router = IUniswapV2Router(address);"
+    const localVarPattern = /([A-Z]\w+)\s+(\w+)\s*=/g;
+    
+    while ((match = localVarPattern.exec(contractCode)) !== null) {
+      const type = match[1];
+      const varName = match[2];
+      if (type && varName && type !== 'uint256' && type !== 'address' && type !== 'bool') {
+        typeMap.set(varName, type);
+      }
+    }
+
+    return typeMap;
   }
 }

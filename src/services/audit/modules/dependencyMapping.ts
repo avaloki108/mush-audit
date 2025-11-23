@@ -141,6 +141,9 @@ function analyzeContractDependencies(contract: ContractFile, allContracts: Contr
   const edges: DependencyEdge[] = [];
   const content = contract.content;
 
+  // NEW: Build variable type map for better resolution
+  const variableTypes = extractVariableTypes(content);
+
   // 1. Import dependencies
   const imports = content.matchAll(/import\s+.*?\s+from\s+['"](.*?)['"]/g);
   for (const importMatch of imports) {
@@ -161,11 +164,24 @@ function analyzeContractDependencies(contract: ContractFile, allContracts: Contr
     }
   }
 
-  // 2. External calls (.call, .transfer, .send)
+  // 2. External calls (.call, .transfer, .send) with TYPE RESOLUTION
   const externalCalls = content.matchAll(/(\w+)\.(?:call|transfer|send)\s*\(/g);
   for (const callMatch of externalCalls) {
     const targetName = callMatch[1];
-    const targetContract = findContractByName(targetName, allContracts);
+    
+    // NEW: Try to resolve type first
+    const targetType = variableTypes.get(targetName);
+    let targetContract = null;
+    
+    if (targetType) {
+      // Look for contract by type
+      targetContract = findContractByType(targetType, allContracts);
+    }
+    
+    // Fallback to name-based resolution
+    if (!targetContract) {
+      targetContract = findContractByName(targetName, allContracts);
+    }
 
     if (targetContract) {
       edges.push({
@@ -174,7 +190,9 @@ function analyzeContractDependencies(contract: ContractFile, allContracts: Contr
         type: 'call',
         functions: [],
         riskLevel: 'medium',
-        description: 'External call - potential reentrancy risk'
+        description: targetType 
+          ? `External call to ${targetType} - potential reentrancy risk`
+          : 'External call - potential reentrancy risk'
       });
     }
   }
@@ -833,3 +851,68 @@ function detectGovernanceAttacks(
 
   return vulnerabilities;
 }
+
+
+/**
+ * NEW: Extract variable types from contract code for improved call resolution
+ */
+function extractVariableTypes(contractCode: string): Map<string, string> {
+  const typeMap = new Map<string, string>();
+
+  // Pattern 1: State variable declarations with contract types
+  // e.g., "IERC20 public token;" or "IUniswapV2Router private router;"
+  const stateVarPattern = /(public|private|internal)?\s+([A-Z]\w+)\s+(?:public|private|internal)?\s+(\w+)\s*[;=]/g;
+  let match;
+  
+  while ((match = stateVarPattern.exec(contractCode)) !== null) {
+    const type = match[2];
+    const varName = match[3];
+    // Filter out primitive types
+    if (type && varName && !["uint256", "uint", "address", "bool", "bytes32", "bytes"].includes(type)) {
+      typeMap.set(varName, type);
+    }
+  }
+
+  // Pattern 2: Local variable declarations with explicit casting
+  // e.g., "IERC20 token = IERC20(address);"
+  const localVarPattern = /([A-Z]\w+)\s+(\w+)\s*=\s*[A-Z]\w+\(/g;
+  
+  while ((match = localVarPattern.exec(contractCode)) !== null) {
+    const type = match[1];
+    const varName = match[2];
+    if (type && varName && !["uint256", "uint", "address", "bool", "bytes32", "bytes"].includes(type)) {
+      typeMap.set(varName, type);
+    }
+  }
+
+  // Pattern 3: Function parameters with contract types
+  // e.g., "function swap(IERC20 tokenIn, uint256 amount)"
+  const paramPattern = /function\s+\w+\s*\([^)]*?([A-Z]\w+)\s+(\w+)[^)]*\)/g;
+  
+  while ((match = paramPattern.exec(contractCode)) !== null) {
+    const type = match[1];
+    const varName = match[2];
+    if (type && varName && !["uint256", "uint", "address", "bool", "bytes32", "bytes"].includes(type)) {
+      typeMap.set(varName, type);
+    }
+  }
+
+  return typeMap;
+}
+
+/**
+ * NEW: Find contract by type name (interface/contract name)
+ */
+function findContractByType(typeName: string, contracts: ContractFile[]): ContractFile | undefined {
+  return contracts.find(c =>
+    // Exact match
+    c.name === typeName ||
+    // Content contains interface or contract with this name
+    c.content.includes(`interface ${typeName}`) ||
+    c.content.includes(`contract ${typeName}`) ||
+    // Contract name includes the type (e.g., ERC20 matches IERC20)
+    c.name.includes(typeName) ||
+    typeName.includes(c.name)
+  );
+}
+

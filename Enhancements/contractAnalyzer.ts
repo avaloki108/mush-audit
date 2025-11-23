@@ -243,149 +243,9 @@ export async function analyzeContract(params: {
 
       // Run specialized economic exploit detection (only for EVM-compatible languages)
       let economicFindings: any[] = [];
-      let languageSpecificFindings: any[] = [];
-      let dataFlowAnalysisResults: any = null;
-      let taintAnalysisResults: any = null;
       
-      // Run data flow analysis for all languages
-      logger.info('Data Flow Analysis', 'Running data flow and taint analysis...');
-      try {
-        const dataFlowPaths = dataFlowAnalyzer.analyzeDataFlow(mergedCode);
-        const taintResults = taintAnalyzer.analyzeTaint(mergedCode);
-        
-        dataFlowAnalysisResults = {
-          criticalPaths: dataFlowPaths.filter(p => p.exploitability === 'high' || p.exploitability === 'medium'),
-          totalPaths: dataFlowPaths.length,
-          taintedPaths: taintResults.taintedPaths,
-          untaintedSinks: taintResults.untaintedSinks
-        };
-        
-        logger.info('Data Flow Analysis', `Found ${dataFlowAnalysisResults.criticalPaths.length} critical data flow paths`);
-      } catch (error) {
-        logger.error('Data Flow Analysis', 'Error during data flow analysis', error);
-      }
-      
-      // Run language-specific advanced detectors
-      if (detectedLanguage === 'rust') {
-        logger.info('Vulnerability Detection', 'Running Solana/Rust advanced detector...');
-        try {
-          const solanaVulns = await solanaAdvancedDetector.detectVulnerabilities(
-            mergedCode,
-            params.contractName || 'Unknown'
-          );
-          languageSpecificFindings = solanaVulns.map((vuln, index) => ({
-            title: vuln.type,
-            severity: vuln.severity,
-            description: vuln.description,
-            impact: vuln.attackVector,
-            location: vuln.location,
-            recommendation: vuln.recommendations.join('\n'),
-            exploitScenario: vuln.attackVector,
-            pocCode: vuln.pocCode,
-            economicImpact: vuln.economicImpact ? economicImpactAnalyzer.formatImpact(vuln.economicImpact) : undefined,
-            confidence: vuln.confidence,
-            validated: vuln.validated,
-            id: `solana-vuln-${index}-${vuln.type.toLowerCase().replace(/\s+/g, '-')}`,
-            type: vuln.type,
-            cweId: vuln.cweId
-          }));
-          logger.info('Vulnerability Detection', `Found ${languageSpecificFindings.length} Solana-specific vulnerabilities`);
-        } catch (error) {
-          logger.error('Vulnerability Detection', 'Error in Solana detector', error);
-        }
-      } else if (detectedLanguage === 'move') {
-        logger.info('Vulnerability Detection', 'Running Move advanced detector...');
-        try {
-          const moveVulns = await moveAdvancedDetector.detectVulnerabilities(
-            mergedCode,
-            params.contractName || 'Unknown'
-          );
-          languageSpecificFindings = moveVulns.map((vuln, index) => ({
-            title: vuln.type,
-            severity: vuln.severity,
-            description: vuln.description,
-            impact: vuln.attackVector,
-            location: vuln.location,
-            recommendation: vuln.recommendations.join('\n'),
-            exploitScenario: vuln.attackVector,
-            pocCode: vuln.pocCode,
-            economicImpact: vuln.economicImpact ? economicImpactAnalyzer.formatImpact(vuln.economicImpact) : undefined,
-            confidence: vuln.confidence,
-            validated: vuln.validated,
-            id: `move-vuln-${index}-${vuln.type.toLowerCase().replace(/\s+/g, '-')}`,
-            type: vuln.type,
-            cweId: vuln.cweId
-          }));
-          logger.info('Vulnerability Detection', `Found ${languageSpecificFindings.length} Move-specific vulnerabilities`);
-        } catch (error) {
-          logger.error('Vulnerability Detection', 'Error in Move detector', error);
-        }
-      } else if (detectedLanguage === 'cairo') {
-        logger.info('Vulnerability Detection', 'Running Cairo/StarkNet advanced detector...');
-        try {
-          const cairoVulns = await cairoAdvancedDetector.detectVulnerabilities(
-            mergedCode,
-            params.contractName || 'Unknown'
-          );
-          languageSpecificFindings = cairoVulns.map((vuln, index) => ({
-            title: vuln.type,
-            severity: vuln.severity,
-            description: vuln.description,
-            impact: vuln.attackVector,
-            location: vuln.location,
-            recommendation: vuln.recommendations.join('\n'),
-            exploitScenario: vuln.attackVector,
-            pocCode: vuln.pocCode,
-            economicImpact: vuln.economicImpact ? economicImpactAnalyzer.formatImpact(vuln.economicImpact) : undefined,
-            confidence: vuln.confidence,
-            validated: vuln.validated,
-            id: `cairo-vuln-${index}-${vuln.type.toLowerCase().replace(/\s+/g, '-')}`,
-            type: vuln.type,
-            cweId: vuln.cweId
-          }));
-          logger.info('Vulnerability Detection', `Found ${languageSpecificFindings.length} Cairo-specific vulnerabilities`);
-        } catch (error) {
-          logger.error('Vulnerability Detection', 'Error in Cairo detector', error);
-        }
-      } else if (isEvmCompatible(detectedLanguage)) {
+      if (isEvmCompatible(detectedLanguage)) {
         logger.info('Vulnerability Detection', 'Running EVM-specific exploit detection...');
-        
-        // Run advanced flash loan detector
-        try {
-          logger.info('Vulnerability Detection', 'Running advanced flash loan oracle manipulation detector...');
-          const flashLoanVulns = await advancedFlashLoanDetector.detectFlashLoanVulnerabilities(
-            mergedCode,
-            params.contractName || 'Unknown'
-          );
-          
-          // Convert flash loan vulnerabilities to standard format
-          const flashLoanFindings = flashLoanVulns.map((vuln, index) => ({
-            title: vuln.type,
-            severity: vuln.severity,
-            description: vuln.description,
-            impact: vuln.attackVector,
-            location: vuln.location,
-            recommendation: vuln.recommendations.join('\n'),
-            exploitScenario: vuln.attackVector,
-            pocCode: vuln.pocCode,
-            economicImpact: economicImpactAnalyzer.formatImpact(vuln.economicImpact),
-            confidence: vuln.confidence,
-            validated: vuln.validated,
-            dataFlowPath: vuln.dataFlowPath,
-            oracleType: vuln.oracleType,
-            manipulationMethod: vuln.manipulationMethod,
-            profitMechanism: vuln.profitMechanism,
-            id: `flashloan-vuln-${index}-${vuln.type.toLowerCase().replace(/\s+/g, '-')}`,
-            type: vuln.type
-          }));
-          
-          languageSpecificFindings.push(...flashLoanFindings);
-          logger.info('Vulnerability Detection', `Found ${flashLoanFindings.length} validated flash loan vulnerabilities`);
-        } catch (error) {
-          logger.error('Vulnerability Detection', 'Error in advanced flash loan detector', error);
-        }
-        
-        // Run standard economic exploit detector
         economicFindings = [
           ...economicExploitDetector.detectFlashLoanOracleManipulation(mergedCode),
           ...economicExploitDetector.detectGovernanceFlashVote(mergedCode),
@@ -423,101 +283,108 @@ export async function analyzeContract(params: {
         logger.info('Vulnerability Detection', `Skipping EVM-specific checks for ${languageName}`);
       }
       
-      // Combine all findings
-      const allFindings = [...economicFindings, ...languageSpecificFindings];
-      // Format all findings for report
-      const formatFinding = (finding: any) => {
-        let formatted = `---\n\n### ${finding.title}\n`;
-        formatted += `- **Title:** ${finding.title}\n`;
-        formatted += `- **Severity:** ${finding.severity}\n`;
-        if (finding.confidence) {
-          formatted += `- **Confidence:** ${finding.confidence}\n`;
-        }
-        if (finding.validated) {
-          formatted += `- **Validated:** ✅ Yes (Verified exploitable)\n`;
-        }
-        formatted += `- **Description:** ${finding.description}\n`;
-        formatted += `- **Impact:** ${finding.impact}\n`;
-        formatted += `- **Location:** ${finding.location}\n`;
-        formatted += `- **Recommendation:** ${finding.recommendation}\n`;
-        
-        if (finding.exploitScenario) {
-          formatted += `- **Exploit Scenario:** ${finding.exploitScenario}\n`;
-        }
-        
-        if (finding.economicImpact) {
-          formatted += `\n**Economic Impact Analysis:**\n${finding.economicImpact}\n`;
-        }
-        
-        if (finding.dataFlowPath && finding.dataFlowPath.length > 0) {
-          formatted += `\n**Data Flow Path:**\n`;
-          finding.dataFlowPath.forEach((step: string, idx: number) => {
-            formatted += `${idx + 1}. ${step}\n`;
-          });
-        }
-        
-        if (finding.oracleType) {
-          formatted += `- **Oracle Type:** ${finding.oracleType}\n`;
-        }
-        
-        if (finding.manipulationMethod) {
-          formatted += `- **Manipulation Method:** ${finding.manipulationMethod}\n`;
-        }
-        
-        if (finding.profitMechanism) {
-          formatted += `- **Profit Mechanism:** ${finding.profitMechanism}\n`;
-        }
-        
-        if (finding.cweId) {
-          formatted += `- **CWE ID:** ${finding.cweId}\n`;
-        }
-        
-        if (finding.pocCode) {
-          const codeLang = detectedLanguage === 'rust' ? 'rust' : 
-                          detectedLanguage === 'move' ? 'move' :
-                          detectedLanguage === 'cairo' ? 'cairo' : 'solidity';
-          formatted += `\n**Proof of Concept:**\n\`\`\`${codeLang}\n${finding.pocCode}\n\`\`\`\n`;
-        }
-        
-        return formatted;
-      };
+      // Run advanced language-specific detectors
+      logger.info('Vulnerability Detection', `Running advanced ${languageName} detectors...`);
       
-      const formattedEconomicFindings = allFindings.length > 0 
-        ? allFindings.map(formatFinding).join('\n\n')
-        : 'No specialized vulnerabilities detected.';
-      
-      // Format data flow analysis results
-      let dataFlowSection = '';
-      if (dataFlowAnalysisResults && dataFlowAnalysisResults.criticalPaths.length > 0) {
-        dataFlowSection = '\n\n## Data Flow Analysis\n\n';
-        dataFlowSection += `**Total Data Flow Paths Analyzed:** ${dataFlowAnalysisResults.totalPaths}\n`;
-        dataFlowSection += `**Critical Exploitable Paths:** ${dataFlowAnalysisResults.criticalPaths.length}\n\n`;
+      if (detectedLanguage === 'solidity') {
+        // Run advanced Solidity detectors with validation
+        const flashLoanVulns = await advancedFlashLoanDetector.detectFlashLoanVulnerabilities(mergedCode, params.contractName || 'Contract');
+        economicFindings.push(...flashLoanVulns.map((v, idx) => ({
+          id: `advanced-vuln-${idx}`,
+          title: v.type,
+          severity: v.severity,
+          location: v.location,
+          description: v.description,
+          impact: v.attackVector,
+          recommendation: v.recommendations.join('\n'),
+          exploitScenario: v.attackVector,
+          economicImpact: v.economicImpact ? economicImpactAnalyzer.formatImpact(v.economicImpact) : undefined,
+          pocCode: v.pocCode,
+          validated: v.validated,
+          confidence: v.confidence
+        })));
         
-        if (dataFlowAnalysisResults.criticalPaths.length > 0) {
-          dataFlowSection += '### Critical Data Flow Paths\n\n';
-          dataFlowAnalysisResults.criticalPaths.slice(0, 10).forEach((path: any, index: number) => {
-            dataFlowSection += `**Path ${index + 1}:**\n`;
-            dataFlowSection += `- **Source:** ${path.source.value} (${path.source.location})\n`;
-            dataFlowSection += `- **Sink:** ${path.sink.value} (${path.sink.location})\n`;
-            dataFlowSection += `- **Exploitability:** ${path.exploitability.toUpperCase()}\n`;
-            dataFlowSection += `- **Has Validation:** ${path.hasValidation ? 'Yes' : 'No'}\n`;
-            if (path.path && path.path.length > 0) {
-              dataFlowSection += `- **Path:** ${path.path.map((n: any) => n.value).join(' → ')}\n`;
-            }
-            dataFlowSection += '\n';
-          });
+        // Run data flow analysis
+        const taintAnalysis = taintAnalyzer.analyzeTaint(mergedCode);
+        for (const path of taintAnalysis.taintedPaths) {
+          if (path.exploitability === 'high') {
+            economicFindings.push({
+              id: `taint-${path.source.id}`,
+              title: 'Tainted Data Flow to Critical Operation',
+              severity: 'High',
+              location: path.source.location,
+              description: `User-controlled data flows to critical operation without validation`,
+              impact: `Data from ${path.source.value} reaches ${path.sink.value}`,
+              recommendation: 'Add input validation and sanitization before critical operations',
+              validated: true
+            });
+          }
         }
-        
-        if (dataFlowAnalysisResults.taintedPaths && dataFlowAnalysisResults.taintedPaths.length > 0) {
-          dataFlowSection += `\n**Tainted Paths (User Input → Critical Operation):** ${dataFlowAnalysisResults.taintedPaths.length}\n`;
-        }
+      } else if (detectedLanguage === 'rust') {
+        // Run Solana advanced detectors
+        const solanaVulns = await solanaAdvancedDetector.detectVulnerabilities(mergedCode, params.contractName || 'Program');
+        economicFindings.push(...solanaVulns.map((v, idx) => ({
+          id: `solana-vuln-${idx}`,
+          title: v.type,
+          severity: v.severity,
+          location: v.location,
+          description: v.description,
+          impact: v.attackVector,
+          recommendation: v.recommendations.join('\n'),
+          exploitScenario: v.attackVector,
+          economicImpact: v.economicImpact ? economicImpactAnalyzer.formatImpact(v.economicImpact) : undefined,
+          pocCode: v.pocCode,
+          validated: v.validated,
+          confidence: v.confidence
+        })));
+      } else if (detectedLanguage === 'move') {
+        // Run Move advanced detectors
+        const moveVulns = await moveAdvancedDetector.detectVulnerabilities(mergedCode, params.contractName || 'Module');
+        economicFindings.push(...moveVulns.map((v, idx) => ({
+          id: `move-vuln-${idx}`,
+          title: v.type,
+          severity: v.severity,
+          location: v.location,
+          description: v.description,
+          impact: v.attackVector,
+          recommendation: v.recommendations.join('\n'),
+          exploitScenario: v.attackVector,
+          economicImpact: v.economicImpact ? economicImpactAnalyzer.formatImpact(v.economicImpact) : undefined,
+          pocCode: v.pocCode,
+          validated: v.validated,
+          confidence: v.confidence
+        })));
+      } else if (detectedLanguage === 'cairo') {
+        // Run Cairo advanced detectors
+        const cairoVulns = await cairoAdvancedDetector.detectVulnerabilities(mergedCode, params.contractName || 'Contract');
+        economicFindings.push(...cairoVulns.map((v, idx) => ({
+          id: `cairo-vuln-${idx}`,
+          title: v.type,
+          severity: v.severity,
+          location: v.location,
+          description: v.description,
+          impact: v.attackVector,
+          recommendation: v.recommendations.join('\n'),
+          exploitScenario: v.attackVector,
+          economicImpact: v.economicImpact ? economicImpactAnalyzer.formatImpact(v.economicImpact) : undefined,
+          pocCode: v.pocCode,
+          validated: v.validated,
+          confidence: v.confidence
+        })));
       }
+      
+      logger.info('Vulnerability Detection', `Total vulnerabilities found: ${economicFindings.length} (including advanced detectors)`);
+      
+      // Format economic findings for report
+      const formattedEconomicFindings = economicFindings.map(finding =>
+        `---\n\n### ${finding.title}\n- **Title:** ${finding.title}\n- **Severity:** ${finding.severity}\n- **Description:** ${finding.description}\n- **Impact:** ${finding.impact}\n- **Location:** ${finding.location}\n- **Recommendation:** ${finding.recommendation}${finding.exploitScenario ? `\n- **Exploit Scenario:** ${finding.exploitScenario}` : ''}${finding.economicImpact ? `\n- **Economic Impact:** ${finding.economicImpact}` : ''}${finding.pocCode ? `\n\n**PoC Code:**\n\`\`\`solidity\n${finding.pocCode}\n\`\`\`` : ''}`
+      ).join('\n\n');
       
       // Run threat intelligence assessment
       const threatEngine = getThreatIntelEngine();
       const threatAssessment = await threatEngine.assessContractThreats(
         mergedCode,
-        allFindings
+        economicFindings
       );
     
       // Cross-contract analysis - only in protocol/multi-file mode
@@ -854,9 +721,8 @@ export async function analyzeContract(params: {
         threatIntelSection += '\n';
       }
 
-      // Append economic findings, data flow analysis, cross-contract analysis, and threat intelligence to AI analysis
-      formattedResponse += '\n\n## Specialized Vulnerability Detection\n\n' + formattedEconomicFindings;
-      formattedResponse += dataFlowSection;
+      // Append economic findings, cross-contract analysis, and threat intelligence to AI analysis
+      formattedResponse += '\n\n## Specialized Economic Exploit Analysis\n\n' + formattedEconomicFindings;
       formattedResponse += crossContractSection;
       formattedResponse += threatIntelSection;
 
@@ -865,6 +731,7 @@ export async function analyzeContract(params: {
       
       // Record metrics in security monitoring
       const monitor = getSecurityMonitor();
+      const allFindings = [...economicFindings];
       monitor.recordAnalysis(
         allFindings,
         analysisTime,
@@ -872,7 +739,7 @@ export async function analyzeContract(params: {
         params.contractName || 'unknown'
       );
 
-      logger.info('Contract Analysis', `Analysis completed in ${analysisTime}ms with ${allFindings.length} findings (${languageSpecificFindings.length} language-specific, ${economicFindings.length} economic exploits)`);
+      logger.info('Contract Analysis', `Analysis completed in ${analysisTime}ms with ${allFindings.length} findings`);
       const report = await generateReport({
         code: mergedCode,
         files: filesToAnalyze,

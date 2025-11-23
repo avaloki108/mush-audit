@@ -96,6 +96,11 @@ export async function analyzeContract(params: {
   let retryCount = 0;
   let lastError: any;
 
+  // Check if localStorage is available (client-side only)
+  if (typeof window === 'undefined') {
+    throw new Error("Contract analysis must be performed on the client side");
+  }
+
   const savedConfig = localStorage.getItem("ai_config");
   if (!savedConfig) {
     throw new Error("AI configuration not found");
@@ -231,7 +236,11 @@ export async function analyzeContract(params: {
         ...economicExploitDetector.detectLossSocialization(mergedCode),
         ...economicExploitDetector.detectBridgeVerifierFlaws(mergedCode),
         ...economicExploitDetector.detectArbitraryCallDispatch(mergedCode),
-      ];
+      ].map((finding, index) => ({
+        ...finding,
+        id: `vuln-${index}-${finding.title.replace(/\s+/g, '-').toLowerCase()}`,
+        type: finding.title
+      }));
       
       // Format economic findings for report
       const formattedEconomicFindings = economicFindings.map(finding =>
@@ -258,21 +267,13 @@ export async function analyzeContract(params: {
 
         logger.info('Protocol Analysis', `Dependency graph: ${dependencyGraph.nodes.length} contracts, ${dependencyGraph.edges.length} dependencies, ${dependencyGraph.vulnerabilities.length} cross-contract vulnerabilities`);
 
-        // Parse contract states from actual Solidity code
-        const contractStates: ContractState[] = params.files.map((file: any) => ({
-          contractAddress: file.path || file.name,
-          contractName: file.name.replace(/\.sol$/, ''),
-          stateVariables: [], // Will be parsed by StateFlowAnalyzer
-          transitions: [],
-          functions: []
-        }));
-
         // Analyze state flow with actual contract content
         logger.info('Protocol Analysis', 'Analyzing state flow and transitions...');
-        const stateFlowAnalyzer = new StateFlowAnalyzer(contractStates);
-        stateFlowResults = stateFlowAnalyzer.analyzeStateFlow();
+        const stateFlowAnalyzer = new StateFlowAnalyzer(params.files);
+        const stateFlowResult = stateFlowAnalyzer.analyzeStateFlow();
+        stateFlowResults = stateFlowResult;
 
-        logger.info('Protocol Analysis', `State flow analysis: ${stateFlowResults.length} contracts analyzed, ${stateFlowResults.reduce((sum, r) => sum + r.issues.length, 0)} issues found`);
+        logger.info('Protocol Analysis', `State flow analysis: ${stateFlowResult.contractStates.length} contracts analyzed, ${stateFlowResult.potentialIssues.length} issues found`);
 
         // Perform mitigation verification with actual contract content
         logger.info('Protocol Analysis', 'Verifying mitigations...');
@@ -336,20 +337,50 @@ export async function analyzeContract(params: {
         }
 
         // State Flow Analysis Results
-        if (stateFlowResults && stateFlowResults.length > 0) {
+        if (stateFlowResults && stateFlowResults.potentialIssues && stateFlowResults.potentialIssues.length > 0) {
           crossContractSection += '### State Flow Analysis\n\n';
-          stateFlowResults.forEach((result: any) => {
-            if (result.issues.length > 0) {
-              crossContractSection += `**Contract: ${result.contractName}**\n\n`;
-              result.issues.forEach((issue: any) => {
-                crossContractSection += `- **${issue.severity}**: ${issue.description} (${issue.function})\n`;
-                if (issue.recommendation) {
-                  crossContractSection += `  - Recommendation: ${issue.recommendation}\n`;
-                }
-              });
-              crossContractSection += '\n';
+          
+          // Group issues by contract
+          const issuesByContract = new Map<string, any[]>();
+          stateFlowResults.potentialIssues.forEach((issue: any) => {
+            if (!issuesByContract.has(issue.contract)) {
+              issuesByContract.set(issue.contract, []);
             }
+            issuesByContract.get(issue.contract)!.push(issue);
           });
+
+          // Display issues grouped by contract
+          issuesByContract.forEach((issues, contractName) => {
+            crossContractSection += `**Contract: ${contractName}**\n\n`;
+            issues.forEach((issue: any) => {
+              crossContractSection += `- **${issue.severity}**: ${issue.description} (${issue.function})\n`;
+              if (issue.recommendation) {
+                crossContractSection += `  - Recommendation: ${issue.recommendation}\n`;
+              }
+            });
+            crossContractSection += '\n';
+          });
+
+          // Add critical paths if available
+          if (stateFlowResults.criticalPaths && stateFlowResults.criticalPaths.length > 0) {
+            crossContractSection += '#### Critical Execution Paths\n\n';
+            stateFlowResults.criticalPaths.forEach((path: any) => {
+              crossContractSection += `- **${path.risk.toUpperCase()}**: ${path.description}\n`;
+              crossContractSection += `  - Path: ${path.path.join(' → ')}\n`;
+              crossContractSection += `  - Impact: ${path.impact}\n\n`;
+            });
+          }
+
+          // Add state invariants if violated
+          const violatedInvariants = stateFlowResults.stateInvariants?.filter((inv: any) => inv.violated) || [];
+          if (violatedInvariants.length > 0) {
+            crossContractSection += '#### Protocol Invariant Violations\n\n';
+            violatedInvariants.forEach((inv: any) => {
+              crossContractSection += `- **${inv.description}**\n`;
+              crossContractSection += `  - Affected Contracts: ${inv.contracts.join(', ')}\n`;
+              crossContractSection += `  - Impact: ${inv.impact}\n\n`;
+            });
+          }
         }
 
         // Mitigation Verification Results

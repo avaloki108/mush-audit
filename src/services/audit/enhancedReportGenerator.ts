@@ -207,7 +207,7 @@ export class EnhancedReportGenerator {
     return { foundryTests, hardhatTests };
   }
 
-  private generateFoundryTest(finding: VulnerabilityFinding): string {
+  private generateFoundryTest(finding: VulnerabilityFinding): string | null {
     const testTemplates: { [key: string]: string } = {
       'Flash Loan Oracle Manipulation': `
 // SPDX-License-Identifier: MIT
@@ -309,7 +309,7 @@ contract PermitReplayTest is Test {
     return testTemplates[finding.title] || null;
   }
 
-  private generateHardhatTest(finding: VulnerabilityFinding): string {
+  private generateHardhatTest(finding: VulnerabilityFinding): string | null {
     const testTemplates: { [key: string]: string } = {
       'Bridge Message Replay': `
 import { expect } from "chai";

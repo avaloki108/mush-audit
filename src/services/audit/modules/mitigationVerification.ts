@@ -55,25 +55,25 @@ export class MitigationVerificationEngine {
       name: 'ReentrancyGuard',
       pattern: /ReentrancyGuard|nonReentrant|mutex|locked/,
       effectiveness: 0.95,
-      vulnerabilityTypes: ['reentrancy', 'cross-contract reentrancy']
+      vulnerabilityTypes: ['reentrancy', 'cross-contract reentrancy', 'read-only reentrancy']
     },
     {
       name: 'Checks-Effects-Interactions',
       pattern: /\/\/.*checks.*effects.*interactions|require.*before.*call/i,
       effectiveness: 0.90,
-      vulnerabilityTypes: ['reentrancy']
+      vulnerabilityTypes: ['reentrancy', 'logical reentrancy']
     },
     {
       name: 'SafeMath',
       pattern: /SafeMath|unchecked\s*\{.*?\}/s,
       effectiveness: 0.85,
-      vulnerabilityTypes: ['integer overflow', 'integer underflow']
+      vulnerabilityTypes: ['integer overflow', 'integer underflow', 'rounding drift']
     },
     {
       name: 'Access Control Modifier',
       pattern: /onlyOwner|onlyAdmin|require\s*\(\s*msg\.sender\s*==|modifier.*only/,
       effectiveness: 0.90,
-      vulnerabilityTypes: ['access control', 'unauthorized access']
+      vulnerabilityTypes: ['access control', 'unauthorized access', 'governance attack']
     },
     {
       name: 'Pausable',
@@ -91,25 +91,85 @@ export class MitigationVerificationEngine {
       name: 'Oracle Security',
       pattern: /TWAP|Chainlink|multiple.*oracle|oracle.*check/i,
       effectiveness: 0.80,
-      vulnerabilityTypes: ['oracle manipulation', 'price manipulation']
+      vulnerabilityTypes: ['oracle manipulation', 'price manipulation', 'flash loan oracle manipulation', 'twap oracle attack']
     },
     {
       name: 'Storage Gap',
       pattern: /__gap|uint256\[\d+\]\s+private\s+__gap/,
       effectiveness: 0.95,
-      vulnerabilityTypes: ['storage collision', 'upgradeability']
+      vulnerabilityTypes: ['storage collision', 'upgradeability', 'proxy storage collision']
     },
     {
       name: 'Return Value Check',
       pattern: /require\s*\(\s*.*\.call|bool\s+success.*=.*\.call.*require\s*\(\s*success/s,
       effectiveness: 0.90,
-      vulnerabilityTypes: ['unchecked call', 'external call']
+      vulnerabilityTypes: ['unchecked call', 'external call', 'unchecked external call']
     },
     {
       name: 'Slippage Protection',
       pattern: /minAmount|maxAmount|slippage|deadline/,
       effectiveness: 0.75,
-      vulnerabilityTypes: ['mev', 'sandwich attack', 'front-running']
+      vulnerabilityTypes: ['mev', 'sandwich attack', 'front-running', 'mev sandwich attack']
+    },
+    {
+      name: 'Flash Loan Protection',
+      pattern: /flashLoanLock|maxFlashLoan|flashFee|onFlashLoan.*require/i,
+      effectiveness: 0.85,
+      vulnerabilityTypes: ['flash loan oracle manipulation', 'flash loan governance attack', 'flash mint exploit']
+    },
+    {
+      name: 'Nonce and Deadline Protection',
+      pattern: /nonce\s*\+\+|deadline.*require|validUntil/,
+      effectiveness: 0.90,
+      vulnerabilityTypes: ['permit signature replay', 'bridge message replay', 'cross-chain bridge replay']
+    },
+    {
+      name: 'Fee-on-Transfer Handling',
+      pattern: /balanceBefore|balanceAfter|actualAmount|receivedAmount/,
+      effectiveness: 0.85,
+      vulnerabilityTypes: ['fee-on-transfer bug', 'fee-on-transfer accounting bug']
+    },
+    {
+      name: 'ERC-777 Hook Protection',
+      pattern: /tokensToSend|tokensReceived|!.*isContract|ReentrancyGuard/,
+      effectiveness: 0.80,
+      vulnerabilityTypes: ['logical reentrancy', 'erc-777 hook', 'erc-1155 callback']
+    },
+    {
+      name: 'Multicall Protection',
+      pattern: /nonce|msg\.value.*==.*0|require.*msg\.value|allowance.*check/,
+      effectiveness: 0.75,
+      vulnerabilityTypes: ['multicall double-spend', 'allowance reuse', 'batch double-spend']
+    },
+    {
+      name: 'Timelock and Governance',
+      pattern: /timelock|delay|proposalDelay|votingDelay|executionDelay/i,
+      effectiveness: 0.85,
+      vulnerabilityTypes: ['governance attack', 'flash loan governance', 'governance manipulation']
+    },
+    {
+      name: 'Circuit Breaker',
+      pattern: /maxDrawdown|pauseOnLoss|emergencyShutdown|circuitBreaker/i,
+      effectiveness: 0.80,
+      vulnerabilityTypes: ['loss socialization', 'vault donation attack', 'economic exploit']
+    },
+    {
+      name: 'Self-Destruct Protection',
+      pattern: /constructor.*immutable|selfdestruct.*prevented|no.*selfdestruct/i,
+      effectiveness: 0.70,
+      vulnerabilityTypes: ['forced ether injection', 'selfdestruct']
+    },
+    {
+      name: 'Bridge Verification',
+      pattern: /merkleProof|verifyProof|validateMessage|signatureVerification/i,
+      effectiveness: 0.85,
+      vulnerabilityTypes: ['bridge verifier flaw', 'cross-chain bridge', 'bridge replay']
+    },
+    {
+      name: 'Permit2 Integration',
+      pattern: /Permit2|permit2|AllowanceTransfer/,
+      effectiveness: 0.90,
+      vulnerabilityTypes: ['permit signature replay', 'allowance reuse']
     }
   ];
 

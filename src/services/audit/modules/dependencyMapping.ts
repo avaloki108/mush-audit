@@ -305,6 +305,26 @@ function detectCrossContractVulnerabilities(
   const uncheckedCallVulns = detectUncheckedExternalCalls(contracts);
   vulnerabilities.push(...uncheckedCallVulns);
 
+  // 5. Detect read-only reentrancy across contracts
+  const readOnlyReentrancyVulns = detectReadOnlyReentrancy(contracts, graph);
+  vulnerabilities.push(...readOnlyReentrancyVulns);
+
+  // 6. Detect flash loan attack vectors across contracts
+  const flashLoanVulns = detectFlashLoanVectors(contracts, graph);
+  vulnerabilities.push(...flashLoanVulns);
+
+  // 7. Detect cross-protocol composability exploits
+  const composabilityVulns = detectComposabilityExploits(contracts, graph);
+  vulnerabilities.push(...composabilityVulns);
+
+  // 8. Detect oracle manipulation across contracts
+  const oracleVulns = detectOracleManipulation(contracts, graph);
+  vulnerabilities.push(...oracleVulns);
+
+  // 9. Detect governance attacks across contracts
+  const governanceVulns = detectGovernanceAttacks(contracts, graph);
+  vulnerabilities.push(...governanceVulns);
+
   return vulnerabilities;
 }
 
@@ -552,4 +572,252 @@ function identifyCriticalContracts(graph: DependencyGraph): string[] {
   });
 
   return [...new Set(criticalContracts)];
+}
+
+// Detect read-only reentrancy across contracts
+function detectReadOnlyReentrancy(
+  contracts: ContractFile[],
+  graph: DependencyGraph
+): CrossContractVulnerability[] {
+  const vulnerabilities: CrossContractVulnerability[] = [];
+
+  contracts.forEach(contract => {
+    const content = contract.content;
+    
+    // Look for view/pure functions that make external calls
+    const viewFunctionPattern = /function\s+(\w+)\s*\([^)]*\)\s+(?:public|external)\s+view[^{]*\{([^}]+)\}/gs;
+    const matches = content.matchAll(viewFunctionPattern);
+
+    for (const match of matches) {
+      const functionName = match[1];
+      const functionBody = match[2];
+
+      // Check if view function calls other contracts
+      if (/\w+\.[\w]+\s*\(/.test(functionBody)) {
+        vulnerabilities.push({
+          type: 'Read-Only Reentrancy',
+          severity: 'High',
+          contracts: [contract.name],
+          description: `View function ${functionName} makes external calls that could be exploited for read-only reentrancy`,
+          location: `${contract.name}::${functionName}`,
+          recommendation: 'Use reentrancy guards even for view functions that call external contracts. Consider caching values or using mutex locks.',
+          dataFlow: `${functionName} (view) -> external contract -> potential inconsistent state reads`
+        });
+      }
+    }
+  });
+
+  return vulnerabilities;
+}
+
+// Detect flash loan attack vectors across contracts
+function detectFlashLoanVectors(
+  contracts: ContractFile[],
+  graph: DependencyGraph
+): CrossContractVulnerability[] {
+  const vulnerabilities: CrossContractVulnerability[] = [];
+
+  // Find contracts that interact with flash loan providers
+  const flashLoanKeywords = ['flashLoan', 'FlashLoan', 'flash', 'borrow'];
+  const oracleKeywords = ['oracle', 'price', 'getPrice', 'latestAnswer', 'TWAP'];
+
+  contracts.forEach(contract => {
+    const content = contract.content;
+    const hasFlashLoan = flashLoanKeywords.some(keyword => content.includes(keyword));
+    const hasOracle = oracleKeywords.some(keyword => content.includes(keyword));
+
+    if (hasFlashLoan && hasOracle) {
+      // Check for state-changing operations that depend on oracle prices
+      const hasStateChange = /balances?\s*\[|totalSupply|reserve|liquidity/.test(content);
+      
+      if (hasStateChange) {
+        vulnerabilities.push({
+          type: 'Flash Loan Oracle Manipulation Vector',
+          severity: 'Critical',
+          contracts: [contract.name],
+          description: `Contract ${contract.name} uses flash loans and oracles together, enabling potential price manipulation attacks`,
+          location: contract.name,
+          recommendation: 'Use TWAP oracles with sufficient time windows. Implement transaction value limits. Add reentrancy guards. Consider using Chainlink price feeds.',
+          dataFlow: 'Flash loan -> Price manipulation -> Oracle read -> State change -> Profit extraction'
+        });
+      }
+    }
+
+    // Check for flash loan callbacks without proper validation
+    if (/function\s+onFlashLoan|executeOperation|receiveFlashLoan/.test(content)) {
+      const hasValidation = /require.*msg\.sender|onlyOwner|authorized/.test(content);
+      
+      if (!hasValidation) {
+        vulnerabilities.push({
+          type: 'Unprotected Flash Loan Callback',
+          severity: 'Critical',
+          contracts: [contract.name],
+          description: `Flash loan callback in ${contract.name} lacks proper validation`,
+          location: contract.name,
+          recommendation: 'Validate the flash loan initiator. Ensure callback can only be called by trusted flash loan providers. Add proper access controls.',
+          dataFlow: 'Attacker -> Flash loan provider -> Callback without validation -> Exploit'
+        });
+      }
+    }
+  });
+
+  return vulnerabilities;
+}
+
+// Detect cross-protocol composability exploits
+function detectComposabilityExploits(
+  contracts: ContractFile[],
+  graph: DependencyGraph
+): CrossContractVulnerability[] {
+  const vulnerabilities: CrossContractVulnerability[] = [];
+
+  // Find contracts that interact with multiple external protocols
+  contracts.forEach(contract => {
+    const content = contract.content;
+    
+    // Check for interactions with DEXes, lending protocols, etc.
+    const protocolPatterns = [
+      { name: 'Uniswap', pattern: /Uniswap|IUniswapV[23]|swap/ },
+      { name: 'Aave', pattern: /Aave|ILendingPool|aToken/ },
+      { name: 'Compound', pattern: /Compound|cToken|comptroller/ },
+      { name: 'Curve', pattern: /Curve|StableSwap/ },
+      { name: 'Balancer', pattern: /Balancer|IVault|BPool/ }
+    ];
+
+    const usedProtocols = protocolPatterns.filter(p => p.pattern.test(content));
+
+    if (usedProtocols.length >= 2) {
+      // Check for atomic operations across protocols
+      const hasAtomicOps = /\.call|\.delegatecall/.test(content);
+      
+      if (hasAtomicOps) {
+        vulnerabilities.push({
+          type: 'Cross-Protocol Composability Risk',
+          severity: 'High',
+          contracts: [contract.name],
+          description: `Contract ${contract.name} atomically composes ${usedProtocols.map(p => p.name).join(', ')} which may enable complex exploit vectors`,
+          location: contract.name,
+          recommendation: 'Validate assumptions at each protocol boundary. Add slippage protection. Implement circuit breakers. Test for sandwich attacks and MEV exploitation.',
+          dataFlow: `${usedProtocols.map(p => p.name).join(' -> ')} -> Potential arbitrage/manipulation`
+        });
+      }
+    }
+  });
+
+  return vulnerabilities;
+}
+
+// Detect oracle manipulation opportunities across contracts
+function detectOracleManipulation(
+  contracts: ContractFile[],
+  graph: DependencyGraph
+): CrossContractVulnerability[] {
+  const vulnerabilities: CrossContractVulnerability[] = [];
+
+  contracts.forEach(contract => {
+    const content = contract.content;
+
+    // Check for single-source oracle usage
+    const oracleCallPattern = /\.getPrice|\.latestAnswer|\.latestRoundData|price\s*\(/g;
+    const oracleCalls = content.match(oracleCallPattern);
+
+    if (oracleCalls && oracleCalls.length > 0) {
+      // Check if TWAP or multi-oracle is used
+      const hasTWAP = /TWAP|timeWeighted|observe|consult/.test(content);
+      const hasMultiOracle = /oracle.*oracle|chainlink.*uniswap/i.test(content);
+
+      if (!hasTWAP && !hasMultiOracle) {
+        vulnerabilities.push({
+          type: 'Single Oracle Dependency',
+          severity: 'High',
+          contracts: [contract.name],
+          description: `Contract ${contract.name} relies on a single oracle source without TWAP protection`,
+          location: contract.name,
+          recommendation: 'Use TWAP oracles with sufficient time windows (15-30 minutes). Implement multi-oracle validation. Add circuit breakers for extreme price movements.',
+          dataFlow: 'Single oracle -> Flash loan manipulation -> Incorrect pricing -> Fund loss'
+        });
+      }
+
+      // Check for spot price usage in critical operations
+      if (/swap|mint|burn|liquidate/.test(content) && /\.balanceOf|\.reserves/.test(content)) {
+        vulnerabilities.push({
+          type: 'Spot Price Manipulation Risk',
+          severity: 'Critical',
+          contracts: [contract.name],
+          description: `Contract ${contract.name} may use spot prices from AMM pools for critical operations`,
+          location: contract.name,
+          recommendation: 'Never use spot prices from AMM pools directly. Use TWAP with minimum time window. Implement price deviation checks.',
+          dataFlow: 'AMM pool balance -> Spot price calculation -> Critical operation -> Manipulation profit'
+        });
+      }
+    }
+  });
+
+  return vulnerabilities;
+}
+
+// Detect governance attack vectors across contracts
+function detectGovernanceAttacks(
+  contracts: ContractFile[],
+  graph: DependencyGraph
+): CrossContractVulnerability[] {
+  const vulnerabilities: CrossContractVulnerability[] = [];
+
+  contracts.forEach(contract => {
+    const content = contract.content;
+
+    // Check for voting mechanisms
+    const hasVoting = /vote|proposal|governance|delegate/i.test(content);
+    
+    if (hasVoting) {
+      // Check for flash loan usage with voting
+      const hasFlashLoan = /flashLoan|borrow|flash/.test(content);
+      
+      if (hasFlashLoan) {
+        vulnerabilities.push({
+          type: 'Flash Loan Governance Attack',
+          severity: 'Critical',
+          contracts: [contract.name],
+          description: `Contract ${contract.name} governance mechanism may be vulnerable to flash loan attacks`,
+          location: contract.name,
+          recommendation: 'Implement voting delays and time locks. Use snapshot-based voting. Require minimum holding period before voting. Add proposal execution delays.',
+          dataFlow: 'Flash loan -> Acquire voting power -> Pass malicious proposal -> Execute -> Repay loan'
+        });
+      }
+
+      // Check for timelock on governance actions
+      const hasTimelock = /timelock|delay|waitPeriod/i.test(content);
+      
+      if (!hasTimelock) {
+        vulnerabilities.push({
+          type: 'Missing Governance Timelock',
+          severity: 'High',
+          contracts: [contract.name],
+          description: `Governance in ${contract.name} lacks timelock protection`,
+          location: contract.name,
+          recommendation: 'Add timelock delays to all governance actions. Implement multi-sig requirements for critical operations. Use proposal queuing system.',
+          dataFlow: 'Malicious proposal -> Immediate execution -> No time for community response'
+        });
+      }
+
+      // Check for delegation without safeguards
+      if (/delegate\s*\(/.test(content)) {
+        const hasDelegationSafeguards = /delegateBySig|nonce|deadline/.test(content);
+        
+        if (!hasDelegationSafeguards) {
+          vulnerabilities.push({
+            type: 'Unsafe Delegation Mechanism',
+            severity: 'Medium',
+            contracts: [contract.name],
+            description: `Delegation in ${contract.name} may lack replay protection`,
+            location: contract.name,
+            recommendation: 'Use EIP-712 signatures with nonces and deadlines. Implement delegation limits. Add delegation cooldown periods.',
+            dataFlow: 'Delegation -> Potential replay or manipulation -> Governance takeover'
+          });
+        }
+      }
+    }
+  });
+
+  return vulnerabilities;
 }

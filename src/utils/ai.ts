@@ -137,7 +137,7 @@ export async function analyzeWithAI(
   prompt: string,
   signal?: AbortSignal
 ): Promise<string> {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     throw new Error("AI analysis must be performed on the client side");
   }
   
@@ -151,30 +151,86 @@ export async function analyzeWithAI(
   // Resolve provider key from config or environment fallback (client-side only: NEXT_PUBLIC_*).
   const resolveProviderKey = () => {
     switch (config.provider) {
-      case 'gemini':
-        return config.geminiKey || process.env.NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
-      case 'groq':
-        return config.groqKey || process.env.NEXT_PUBLIC_GROQ_API_KEY || process.env.GROQ_API_KEY;
-      case 'xai':
-        return config.xaiKey || process.env.NEXT_PUBLIC_XAI_API_KEY || process.env.XAI_API_KEY;
-      case 'claude':
-        return config.claudeKey || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
-      case 'gpt':
-        return config.gptKey || process.env.NEXT_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY;
-      case 'ollama':
+      case "gemini":
+        return (
+          config.geminiKey ||
+          process.env.NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY ||
+          process.env.GOOGLE_GEMINI_API_KEY
+        );
+      case "groq":
+        return (
+          config.groqKey ||
+          process.env.NEXT_PUBLIC_GROQ_API_KEY ||
+          process.env.GROQ_API_KEY
+        );
+      case "xai":
+        return (
+          config.xaiKey ||
+          process.env.NEXT_PUBLIC_XAI_API_KEY ||
+          process.env.XAI_API_KEY
+        );
+      case "claude":
+        return (
+          config.claudeKey ||
+          process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY ||
+          process.env.ANTHROPIC_API_KEY
+        );
+      case "gpt":
+        return (
+          config.gptKey ||
+          process.env.NEXT_PUBLIC_OPENAI_API_KEY ||
+          process.env.OPENAI_API_KEY ||
+          process.env.OPENROUTER_API_KEY
+        );
+      case "ollama":
         return config.ollamaUrl;
       default:
-        return '';
+        return "";
     }
   };
-
   const providerKey = resolveProviderKey();
-  if (!providerKey) {
-    throw new Error(`Missing API key for provider: ${config.provider}. Set env var or enter in UI.`);
-  }
+  const ensureProviderKey = () => {
+    if (!providerKey) {
+      throw new Error(
+        `Missing API key for provider: ${config.provider}. Set env var or enter in UI.`
+      );
+    }
+  };
   let response: Response;
 
   try {
+    // Prefer unified API route (server-side keys) when available; fall back to client-side calls.
+    try {
+      const routeResponse = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          provider: config.provider,
+          model: config.selectedModel,
+          superPrompt: config.superPrompt,
+          language: config.language,
+        }),
+        signal,
+      });
+
+      if (routeResponse.ok) {
+        const payload = await routeResponse.json();
+        const text = payload?.text ?? payload?.response;
+        if (text) {
+          return text;
+        }
+      } else {
+        const errText = await routeResponse.text();
+        console.warn(`AI route error (${routeResponse.status}): ${errText}`);
+      }
+    } catch (routeError) {
+      console.warn(
+        "Unified AI route call failed; falling back to direct provider logic.",
+        routeError
+      );
+    }
+
     if (config.provider === "gemini") {
       // console.log("gemini");
       const geminiModel = getGeminiModelById(config.selectedModel);
@@ -183,9 +239,10 @@ export async function analyzeWithAI(
           `Invalid Gemini model selected: ${config.selectedModel}`
         );
       }
+      ensureProviderKey();
 
       response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel.id}:generateContent?key=${config.geminiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel.id}:generateContent?key=${providerKey}`,
         {
           method: "POST",
           headers: {
@@ -221,9 +278,10 @@ export async function analyzeWithAI(
       if (!claudeModel) {
         throw new Error("Invalid Claude model selected");
       }
+      ensureProviderKey();
 
       const anthropic = new Anthropic({
-        apiKey: config.claudeKey,
+        apiKey: providerKey,
         dangerouslyAllowBrowser: true,
       });
 
@@ -267,34 +325,169 @@ export async function analyzeWithAI(
       if (!gptModel) {
         throw new Error(`Invalid GPT model selected: ${config.selectedModel}`);
       }
+      ensureProviderKey();
+      const gptBase =
+        providerKey.startsWith("sk-or-") || providerKey.startsWith("sess-")
+          ? "https://openrouter.ai/api/v1"
+          : "https://api.openai.com/v1";
 
-      response = await fetch("https://api.openai.com/v1/chat/completions", {
+      response = await fetch(`${gptBase}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${config.gptKey}`,
-        // New unified server-side route call using environment keys securely.
-        try {
-          const routeResponse = await fetch('/api/ai', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              prompt,
-              provider: config.provider,
-              model: config.selectedModel,
-              superPrompt: config.superPrompt,
-              language: config.language
-            }),
-            signal
-          });
-          if (!routeResponse.ok) {
-            const errText = await routeResponse.text();
-            throw new Error(`AI route error (${routeResponse.status}): ${errText}`);
-          }
-          const payload = await routeResponse.json();
-          return payload.text || payload.response || 'No response text';
-        } catch (e: any) {
-          console.error('Unified AI route call failed; falling back to legacy direct provider logic.', e);
-          throw new Error(e.message || 'AI route request failed');
-        }
+          Authorization: `Bearer ${providerKey}`,
+        },
+        body: JSON.stringify({
+          model: gptModel.id,
+          messages: [
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          ...(gptModel.supportsTemperature !== false
+            ? { temperature: 0.5 }
+            : { temperature: 1 }),
+        }),
+        signal,
+      });
+
+      if (!response?.ok) {
+        const errorData = await response.text();
+        throw new Error(
+          `API request failed: ${response.statusText}. Details: ${errorData}`
+        );
+      }
+
+      const data = await response.json();
       return data.choices[0].message.content;
+    } else if (config.provider === "xai") {
+      const xaiModel = getXAIModelById(config.selectedModel);
+      if (!xaiModel) {
+        throw new Error(`Invalid xAI model selected: ${config.selectedModel}`);
+      }
+      ensureProviderKey();
+
+      response = await fetch("https://api.x.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${providerKey}`,
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content: SYSTEM_PROMPT,
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          model: xaiModel.id,
+          stream: false,
+          temperature: 0.5,
+        }),
+        signal,
+      });
+
+      if (!response?.ok) {
+        const errorData = await response.text();
+        throw new Error(
+          `xAI API request failed: ${response.statusText}. Details: ${errorData}`
+        );
+      }
+
+      const data = await response.json();
+      return data.choices[0].message.content;
+    } else if (config.provider === "groq") {
+      const groqModel = getGroqModelById(config.selectedModel);
+      if (!groqModel) {
+        throw new Error(`Invalid Groq model selected: ${config.selectedModel}`);
+      }
+      ensureProviderKey();
+
+      response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${providerKey}`,
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content: SYSTEM_PROMPT,
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          model: groqModel.id,
+          temperature: 0.5,
+          max_tokens: 8000,
+        }),
+        signal,
+      });
+
+      if (!response?.ok) {
+        const errorData = await response.text();
+        throw new Error(
+          `Groq API request failed: ${response.statusText}. Details: ${errorData}`
+        );
+      }
+
+      const data = await response.json();
+      return data.choices[0].message.content;
+    } else if (config.provider === "ollama") {
+      const ollamaModel = getOllamaModelById(config.selectedModel);
+      if (!ollamaModel) {
+        throw new Error(
+          `Invalid Ollama model selected: ${config.selectedModel}`
+        );
+      }
+
+      const ollamaUrl = providerKey || "http://localhost:11434";
+      response = await fetch(`${ollamaUrl}/api/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: ollamaModel.id,
+          messages: [
+            {
+              role: "system",
+              content: SYSTEM_PROMPT,
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          stream: false,
+        }),
+        signal,
+      });
+
+      if (!response?.ok) {
+        const errorData = await response.text();
+        throw new Error(
+          `Ollama API request failed: ${response.statusText}. Details: ${errorData}`
+        );
+      }
+
+      const data = await response.json();
+      return data.message.content;
+    } else {
+      throw new Error("Invalid provider");
+    }
+  } catch (error) {
+    console.error("AI analysis error:", error);
+    throw error instanceof Error
+      ? error
+      : new Error("Unknown error during analysis");
+  }
+}

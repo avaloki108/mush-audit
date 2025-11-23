@@ -15,7 +15,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { url, apiKey } = getApiScanConfig(chain);
+    const { url, apiKey, chainId } = getApiScanConfig(chain);
+    const buildApiUrl = (action: string, targetAddress: string) =>
+      `${url}?chainid=${chainId}&module=contract&action=${action}&address=${targetAddress}&apikey=${apiKey}`;
     
     // // 1. Try to get source code from blockscan
     // try {
@@ -39,7 +41,7 @@ export async function GET(request: NextRequest) {
     // }
 
     // 2. If blockscan fails, fallback to etherscan
-    const apiUrl = `${url}?module=contract&action=getsourcecode&address=${address}&apikey=${apiKey}`;
+    const apiUrl = buildApiUrl('getsourcecode', address);
     const response = await fetch(apiUrl);
     const data = await response.json();
 
@@ -164,7 +166,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Get implementation contract source code
-        const implUrl = `${url}?module=contract&action=getsourcecode&address=${result.Implementation}&apikey=${apiKey}`;
+        const implUrl = buildApiUrl('getsourcecode', result.Implementation);
         const implResponse = await fetch(implUrl);
         const implData = await implResponse.json();
 
@@ -235,7 +237,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Get contract ABI
-      const abiUrl = `${url}?module=contract&action=getabi&address=${address}&apikey=${apiKey}`;
+      const abiUrl = buildApiUrl('getabi', address);
       const abiResponse = await fetch(abiUrl);
       const abiData = await abiResponse.json();
 
@@ -252,7 +254,7 @@ export async function GET(request: NextRequest) {
 
       // If proxy contract, also get implementation contract ABI
       if (isProxy && result.Implementation) {
-        const implAbiUrl = `${url}?module=contract&action=getabi&address=${result.Implementation}&apikey=${apiKey}`;
+        const implAbiUrl = buildApiUrl('getabi', result.Implementation);
         const implAbiResponse = await fetch(implAbiUrl);
         const implAbiData = await implAbiResponse.json();
 

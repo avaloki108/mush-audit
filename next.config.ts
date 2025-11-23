@@ -32,35 +32,11 @@ const nextConfig = {
     return [
       {
         source: "/api/etherscan/:path*",
-        destination: "https://api.etherscan.io/api/:path*",
-      },
-      {
-        source: "/api/bscscan/:path*",
-        destination: "https://api.bscscan.com/api/:path*",
-      },
-      {
-        source: "/api/arbiscan/:path*",
-        destination: "https://api.arbiscan.io/api/:path*",
-      },
-      {
-        source: "/api/basescan/:path*",
-        destination: "https://api.basescan.org/api/:path*",
+        destination: "https://api.etherscan.io/v2/api/:path*",
       },
       {
         source: "/etherscan/:path*",
         destination: "https://etherscan.io/:path*",
-      },
-      {
-        source: "/bscscan/:path*",
-        destination: "https://bscscan.com/:path*",
-      },
-      {
-        source: "/arbiscan/:path*",
-        destination: "https://arbiscan.io/:path*",
-      },
-      {
-        source: "/basescan/:path*",
-        destination: "https://basescan.org/:path*",
       },
     ];
   },

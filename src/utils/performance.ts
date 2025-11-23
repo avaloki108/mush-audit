@@ -55,4 +55,12 @@ export const createCache = <T>(maxSize: number = 100) => {
       });
     }
   };
-}; 
+};
+
+// Logger utility for monitoring and debugging
+export const logger = {
+  info: (category: string, message: string) => console.log(`[${category}] ${message}`),
+  debug: (category: string, message: string) => console.debug(`[${category}] ${message}`),
+  error: (category: string, message: string, error?: any) => console.error(`[${category}] ${message}`, error),
+  warn: (category: string, message: string) => console.warn(`[${category}] ${message}`)
+};

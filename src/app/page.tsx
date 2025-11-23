@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Sidebar } from "@/components/Sidebar";
 import { SecurityIcon, GasIcon, CodeIcon, AIIcon, ComplianceIcon, ReportIcon } from "@/components/Icons";
+import HomeAISelector from "@/components/HomeAISelector";
 
 export default function HomePage() {
   return (
@@ -20,7 +21,7 @@ export default function HomePage() {
           </p>
         </div>
 
-        <div className="flex justify-center gap-6 mb-20">
+        <div className="flex justify-center gap-6 mb-20 flex-wrap">
           <a
             href="/audit"
             className="group relative inline-flex items-center gap-2 px-8 py-4 
@@ -58,6 +59,8 @@ export default function HomePage() {
           >
             Documentation
           </a>
+
+          <HomeAISelector />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

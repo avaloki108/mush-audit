@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
       const response = await fetch(auroraUrl);
       const data = await response.json();
 
-      const { url: apiUrl, apiKey } = getApiScanConfig(chain);
-      const creationUrl = `${apiUrl}?module=contract&action=getcontractcreation&contractaddresses=${address}&apikey=${apiKey}`;
+      const { url: apiUrl, apiKey, chainId } = getApiScanConfig(chain);
+      const creationUrl = `${apiUrl}?chainid=${chainId}&module=contract&action=getcontractcreation&contractaddresses=${address}&apikey=${apiKey}`;
       const creationResponse = await fetch(creationUrl);
       const creationData = await creationResponse.json();
 
@@ -48,15 +48,15 @@ export async function GET(request: NextRequest) {
       });
     } else {
       // other chain
-      const { url: apiUrl, apiKey } = getApiScanConfig(chain);
+      const { url: apiUrl, apiKey, chainId } = getApiScanConfig(chain);
 
       // 1. Get contract bytecode
-      const bytecodeUrl = `${apiUrl}?module=proxy&action=eth_getCode&address=${address}&tag=latest&apikey=${apiKey}`;
+      const bytecodeUrl = `${apiUrl}?chainid=${chainId}&module=proxy&action=eth_getCode&address=${address}&tag=latest&apikey=${apiKey}`;
       const bytecodeResponse = await fetch(bytecodeUrl);
       const bytecodeData = await bytecodeResponse.json();
 
       // 2. Get contract creation code and creator info
-      const creationUrl = `${apiUrl}?module=contract&action=getcontractcreation&contractaddresses=${address}&apikey=${apiKey}`;
+      const creationUrl = `${apiUrl}?chainid=${chainId}&module=contract&action=getcontractcreation&contractaddresses=${address}&apikey=${apiKey}`;
       const creationResponse = await fetch(creationUrl);
       const creationData = await creationResponse.json();
 
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Get contract source code information
-      const sourceUrl = `${apiUrl}?module=contract&action=getsourcecode&address=${address}&apikey=${apiKey}`;
+      const sourceUrl = `${apiUrl}?chainid=${chainId}&module=contract&action=getsourcecode&address=${address}&apikey=${apiKey}`;
       const sourceResponse = await fetch(sourceUrl);
       const sourceData = await sourceResponse.json();
 

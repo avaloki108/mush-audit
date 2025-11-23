@@ -43,15 +43,26 @@ Mush Audit is an AI-powered smart contract security analysis platform that lever
 - More models coming soon
 
 ### 🌐 Multi-Chain Support
-- Ethereum
-- Base
-- Arbitrum
-- Optimism
-- BSC
-- Polygon
-- Avalanche-C
-- Aurora
-- More chains coming soon
+**Now supporting 75+ blockchain networks via Etherscan v2 API!**
+
+#### Mainnet Networks
+- Ethereum, Arbitrum One, Arbitrum Nova
+- Base, Optimism, Polygon
+- BSC, Avalanche C-Chain
+- Linea, Scroll, zkSync
+- Blast, Mantle, Taiko
+- Gnosis, Celo, Aurora
+- Moonbeam, Moonriver
+- And 55+ more chains!
+
+#### Testnet Networks
+- Sepolia, Holesky, Hoodi
+- Arbitrum Sepolia, Base Sepolia
+- OP Sepolia, Polygon Amoy
+- Avalanche Fuji
+- And many more testnets!
+
+📖 **[See full list of supported chains](./ETHERSCAN_V2_UPDATE.md)**
 
 ### 🚀 Super Prompt
 - Enhanced analysis capabilities

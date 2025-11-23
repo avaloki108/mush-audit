@@ -13,12 +13,14 @@ interface AIConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
   onStartAnalysis: () => void;
+  confirmLabel?: string;
 }
 
 export default function AIConfigModal({
   isOpen,
   onClose,
   onStartAnalysis,
+  confirmLabel,
 }: AIConfigModalProps) {
   const [config, setConfig] = useState<AIConfig>(() => {
     const defaultConfig = {
@@ -289,7 +291,7 @@ export default function AIConfigModal({
                      transition-all duration-300 ease-out
                      hover:bg-[#FF8B3E]/10"
           >
-            <span className="relative z-10">Start Analysis</span>
+            <span className="relative z-10">{confirmLabel || "Start Analysis"}</span>
             <svg
               className="w-4 h-4 transform transition-transform duration-300 
                          group-hover:translate-x-1"

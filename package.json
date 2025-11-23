@@ -6,7 +6,8 @@
     "dev": "bunx --bun next dev",
     "build": "bunx --bun next build",
     "start": "bunx --bun next start",
-    "lint": "bunx --bun next lint"
+    "lint": "bunx --bun next lint",
+    "verify-chains": "tsx scripts/verify-chains.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
@@ -24,7 +25,7 @@
     "html2canvas": "^1.4.1",
     "jszip": "^3.10.1",
     "marked": "^15.0.3",
-    "next": "15.4.7",
+    "next": "^16.0.2-canary.33",
     "prismjs": "^1.29.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

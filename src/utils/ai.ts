@@ -117,6 +117,7 @@ export function useAIConfig() {
       ollamaUrl: "http://localhost:11434",
       selectedModel: GPT_MODELS[0].id,
       language: "english",
+      superPrompt: false,
     };
   });
 

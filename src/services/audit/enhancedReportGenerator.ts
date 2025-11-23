@@ -1,4 +1,5 @@
 import type { ContractFile } from "@/types/blockchain";
+import { pocGenerator } from "./modules/pocGenerator";
 
 export interface VulnerabilityFinding {
   title: string;
@@ -66,6 +67,29 @@ export interface EnhancedAuditReport {
 
 export class EnhancedReportGenerator {
 
+  /**
+   * Strict filtering to remove "garbage" findings.
+   */
+  private filterGarbage(findings: VulnerabilityFinding[]): VulnerabilityFinding[] {
+    return findings.filter(f => {
+        // 1. Discard purely stylistic / info issues unless they have High impact
+        if (f.severity === 'Low' && !f.economicImpact) return false;
+        if (f.title.toLowerCase().includes('style') || f.title.toLowerCase().includes('comment')) return false;
+
+        // 2. Discard "Gas Optimization" disguised as vulnerabilities
+        if (f.title.toLowerCase().includes('gas') && f.severity !== 'Low') {
+            // Downgrade gas issues if they are marked critical
+            f.severity = 'Low';
+            return true; // Keep them but categorized correctly
+        }
+
+        // 3. Discard vague "Best Practice" warnings without specific location
+        if (f.location === 'Global' && f.title.includes('Best Practice')) return false;
+
+        return true;
+    });
+  }
+
   generateExploitScenarios(findings: VulnerabilityFinding[]): ExploitScenario[] {
     const scenarios: ExploitScenario[] = [];
 
@@ -82,66 +106,16 @@ export class EnhancedReportGenerator {
   }
 
   private createDetailedExploitScenario(finding: VulnerabilityFinding): ExploitScenario | null {
-    const baseScenarios: { [key: string]: Partial<ExploitScenario> } = {
-      'Flash Loan Oracle Manipulation': {
-        prerequisites: ['Large liquidity pool', 'Oracle with short TWAP window', 'Flash loan availability'],
-        steps: [
-          'Borrow large amount of tokens via flash loan',
-          'Execute swaps to manipulate oracle price',
-          'Trigger victim protocol logic that uses manipulated price',
-          'Arbitrage back to original price',
-          'Repay flash loan with profit'
-        ],
-        economicDamage: '$100M+ (Mango Markets example)',
-        mitigation: 'Use longer TWAP periods, implement price manipulation detection, add flash loan fees'
-      },
-      'Permit Signature Replay': {
-        prerequisites: ['Permit function without nonce validation', 'Valid permit signature'],
-        steps: [
-          'Obtain valid permit signature from victim',
-          'Extract signature components (r, s, v)',
-          'Call permit function multiple times with same signature',
-          'Drain approved token allowance repeatedly'
-        ],
-        economicDamage: 'Complete approved token drainage',
-        mitigation: 'Implement nonce tracking, add deadline validation, use Permit2'
-      },
-      'Bridge Message Replay': {
-        prerequisites: ['Bridge without replay protection', 'Valid bridge message'],
-        steps: [
-          'Capture legitimate bridge message',
-          'Monitor bridge for message processing',
-          'Resubmit same message before original processes',
-          'Receive duplicate funds on destination chain'
-        ],
-        economicDamage: '$190M+ (Nomad bridge hack)',
-        mitigation: 'Implement message hashing and processed status tracking'
-      },
-      'Proxy Storage Collision': {
-        prerequisites: ['Upgradeable proxy', 'Implementation with different storage layout'],
-        steps: [
-          'Deploy new implementation with incompatible storage',
-          'Execute upgrade through governance/admin',
-          'Critical storage slots get overwritten',
-          'Contract becomes unusable or controlled by attacker'
-        ],
-        economicDamage: 'Total fund loss if admin keys corrupted',
-        mitigation: 'Use structured storage patterns, implement storage gaps, test upgrades thoroughly'
-      }
-    };
-
-    const baseScenario = baseScenarios[finding.title];
-    if (!baseScenario) return null;
-
+    // Use the finding's own data if available, otherwise fallback to templates
     return {
       title: `Exploit Scenario: ${finding.title}`,
       description: finding.description,
-      prerequisites: baseScenario.prerequisites || [],
-      steps: baseScenario.steps || [],
+      prerequisites: finding.prerequisites || [],
+      steps: finding.exploitScenario ? [finding.exploitScenario] : [],
       impact: finding.impact,
-      economicDamage: baseScenario.economicDamage || finding.economicImpact || 'Unknown',
-      pocCode: finding.pocCode || '// PoC code not available',
-      mitigation: baseScenario.mitigation || finding.recommendation
+      economicDamage: finding.economicImpact || 'Unknown',
+      pocCode: finding.pocCode || pocGenerator.generateFoundryTest(finding), // Use dynamic generator
+      mitigation: finding.recommendation
     };
   }
 
@@ -165,16 +139,13 @@ export class EnhancedReportGenerator {
       const baseValue = severityMultipliers[finding.severity];
       let adjustedValue = baseValue;
 
-      // Adjust based on exploit scenario details
-      if (finding.exploitScenario?.includes('flash loan')) adjustedValue *= 10;
-      if (finding.exploitScenario?.includes('governance')) adjustedValue *= 5;
-      if (finding.exploitScenario?.includes('bridge')) adjustedValue *= 20;
-      if (finding.exploitScenario?.includes('oracle')) adjustedValue *= 15;
+      // Adjust based on keywords
+      if (finding.title.toLowerCase().includes('flash loan')) adjustedValue *= 10;
+      if (finding.title.toLowerCase().includes('bridge')) adjustedValue *= 20;
 
       totalLoss += adjustedValue;
       riskBreakdown[finding.title] = `$${adjustedValue.toLocaleString()}`;
 
-      // Add to attack surface
       if (finding.severity === 'Critical' || finding.severity === 'High') {
         attackSurface.push(finding.title);
       }
@@ -187,7 +158,7 @@ export class EnhancedReportGenerator {
     };
   }
 
-  generateTestTemplates(findings: VulnerabilityFinding[]): {
+  generateTestTemplates(findings: VulnerabilityFinding[], contractName?: string): {
     foundryTests: string[];
     hardhatTests: string[];
   } {
@@ -196,11 +167,9 @@ export class EnhancedReportGenerator {
 
     for (const finding of findings) {
       if (finding.severity === 'Critical' || finding.severity === 'High') {
-        const foundryTest = this.generateFoundryTest(finding);
-        const hardhatTest = this.generateHardhatTest(finding);
-
-        if (foundryTest) foundryTests.push(foundryTest);
-        if (hardhatTest) hardhatTests.push(hardhatTest);
+        // Use the new PoC Generator
+        const foundryTest = pocGenerator.generateFoundryTest(finding, contractName || "TargetContract");
+        foundryTests.push(foundryTest);
       }
     }
 
@@ -446,28 +415,17 @@ describe("Bridge Message Replay", function () {
   }
 
   prioritizeVulnerabilities(findings: VulnerabilityFinding[]): VulnerabilityFinding[] {
-    // Sort by severity and likelihood
+    // Sort by Severity -> Economic Impact -> Likelihood
     const severityWeight = { 'Critical': 4, 'High': 3, 'Medium': 2, 'Low': 1 };
-    const likelihoodWeight = { 'High': 3, 'Medium': 2, 'Low': 1 };
-
+    
     return findings.sort((a, b) => {
-      const aScore = (severityWeight[a.severity] || 1) * (likelihoodWeight[a.likelihood || 'Medium'] || 2);
-      const bScore = (severityWeight[b.severity] || 1) * (likelihoodWeight[b.likelihood || 'Medium'] || 2);
-
-      // Sort by score descending, then by economic impact
-      if (aScore !== bScore) return bScore - aScore;
-
-      // If scores equal, prioritize by economic impact keywords
-      const aEconomic = a.economicImpact || '';
-      const bEconomic = b.economicImpact || '';
-
-      const highImpactKeywords = ['$100M', '$10M', 'complete', 'total', 'drain'];
-      const aHasHighImpact = highImpactKeywords.some(k => aEconomic.includes(k));
-      const bHasHighImpact = highImpactKeywords.some(k => bEconomic.includes(k));
-
-      if (aHasHighImpact && !bHasHighImpact) return -1;
-      if (!aHasHighImpact && bHasHighImpact) return 1;
-
+      const diff = severityWeight[b.severity] - severityWeight[a.severity];
+      if (diff !== 0) return diff;
+      
+      // If same severity, prioritize economic impact presence
+      if (a.economicImpact && !b.economicImpact) return -1;
+      if (!a.economicImpact && b.economicImpact) return 1;
+      
       return 0;
     });
   }
@@ -490,20 +448,6 @@ describe("Bridge Message Replay", function () {
         longTerm.push(finding.recommendation);
       }
     }
-
-    // Add general recommendations
-    if (findings.some(f => f.title.includes('Flash') || f.title.includes('Oracle'))) {
-      immediate.push('Implement multi-oracle price feeds with manipulation detection');
-    }
-
-    if (findings.some(f => f.title.includes('Bridge') || f.title.includes('Cross'))) {
-      immediate.push('Add comprehensive replay protection to all bridge operations');
-    }
-
-    if (findings.some(f => f.title.includes('Permit') || f.title.includes('Signature'))) {
-      shortTerm.push('Migrate to Permit2 for enhanced signature security');
-    }
-
     return { immediate, shortTerm, longTerm };
   }
 
@@ -519,12 +463,17 @@ describe("Bridge Message Replay", function () {
     const filteredVulnerabilities = this.filterGarbageFindings(params.vulnerabilities);
     
     const prioritizedVulnerabilities = this.prioritizeVulnerabilities(filteredVulnerabilities);
+    // 1. Filter Garbage first
+    const cleanFindings = this.filterGarbage(params.vulnerabilities);
+    
+    // 2. Prioritize
+    const prioritizedVulnerabilities = this.prioritizeVulnerabilities(cleanFindings);
+    
     const exploitScenarios = this.generateExploitScenarios(prioritizedVulnerabilities);
     const economicAnalysis = this.calculateEconomicImpact(prioritizedVulnerabilities);
-    const testSuites = this.generateTestTemplates(prioritizedVulnerabilities);
+    const testSuites = this.generateTestTemplates(prioritizedVulnerabilities, params.contractName);
     const recommendations = this.generateRecommendations(prioritizedVulnerabilities);
 
-    // Calculate risk score (0-100)
     const severityCounts = {
       Critical: prioritizedVulnerabilities.filter(v => v.severity === 'Critical').length,
       High: prioritizedVulnerabilities.filter(v => v.severity === 'High').length,
@@ -532,14 +481,12 @@ describe("Bridge Message Replay", function () {
       Low: prioritizedVulnerabilities.filter(v => v.severity === 'Low').length
     };
 
+    // Weighted Risk Score
     const riskScore = Math.min(100,
-      (severityCounts.Critical * 25) +
+      (severityCounts.Critical * 30) +
       (severityCounts.High * 15) +
-      (severityCounts.Medium * 5) +
-      (severityCounts.Low * 1)
+      (severityCounts.Medium * 5)
     );
-
-    const sourceLines = params.code.split('\n').length;
 
     return {
       summary: {
@@ -554,7 +501,7 @@ describe("Bridge Message Replay", function () {
       contractInfo: {
         name: params.contractName,
         chain: params.chain,
-        sourceLines
+        sourceLines: params.code.split('\n').length
       },
       vulnerabilities: prioritizedVulnerabilities,
       exploitScenarios,

@@ -147,6 +147,31 @@ export async function analyzeWithAI(
   }
 
   const config: AIConfig = JSON.parse(savedConfig);
+
+  // Resolve provider key from config or environment fallback (client-side only: NEXT_PUBLIC_*).
+  const resolveProviderKey = () => {
+    switch (config.provider) {
+      case 'gemini':
+        return config.geminiKey || process.env.NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
+      case 'groq':
+        return config.groqKey || process.env.NEXT_PUBLIC_GROQ_API_KEY || process.env.GROQ_API_KEY;
+      case 'xai':
+        return config.xaiKey || process.env.NEXT_PUBLIC_XAI_API_KEY || process.env.XAI_API_KEY;
+      case 'claude':
+        return config.claudeKey || process.env.NEXT_PUBLIC_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+      case 'gpt':
+        return config.gptKey || process.env.NEXT_PUBLIC_OPENAI_API_KEY || process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY;
+      case 'ollama':
+        return config.ollamaUrl;
+      default:
+        return '';
+    }
+  };
+
+  const providerKey = resolveProviderKey();
+  if (!providerKey) {
+    throw new Error(`Missing API key for provider: ${config.provider}. Set env var or enter in UI.`);
+  }
   let response: Response;
 
   try {
@@ -248,154 +273,28 @@ export async function analyzeWithAI(
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${config.gptKey}`,
-        },
-        body: JSON.stringify({
-          model: gptModel.id,
-          messages: [
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-          ...(gptModel.supportsTemperature !== false
-            ? { temperature: 0.5 }
-            : { temperature: 1 }),
-        }),
-        signal,
-      });
-
-      if (!response?.ok) {
-        const errorData = await response.text();
-        throw new Error(
-          `API request failed: ${response.statusText}. Details: ${errorData}`
-        );
-      }
-
-      const data = await response.json();
+        // New unified server-side route call using environment keys securely.
+        try {
+          const routeResponse = await fetch('/api/ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt,
+              provider: config.provider,
+              model: config.selectedModel,
+              superPrompt: config.superPrompt,
+              language: config.language
+            }),
+            signal
+          });
+          if (!routeResponse.ok) {
+            const errText = await routeResponse.text();
+            throw new Error(`AI route error (${routeResponse.status}): ${errText}`);
+          }
+          const payload = await routeResponse.json();
+          return payload.text || payload.response || 'No response text';
+        } catch (e: any) {
+          console.error('Unified AI route call failed; falling back to legacy direct provider logic.', e);
+          throw new Error(e.message || 'AI route request failed');
+        }
       return data.choices[0].message.content;
-    } else if (config.provider === "xai") {
-      const xaiModel = getXAIModelById(config.selectedModel);
-      if (!xaiModel) {
-        throw new Error(`Invalid xAI model selected: ${config.selectedModel}`);
-      }
-
-      response = await fetch("https://api.x.ai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.xaiKey}`,
-        },
-        body: JSON.stringify({
-          messages: [
-            {
-              role: "system",
-              content: SYSTEM_PROMPT,
-            },
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-          model: xaiModel.id,
-          stream: false,
-          temperature: 0.5,
-        }),
-        signal,
-      });
-
-      if (!response?.ok) {
-        const errorData = await response.text();
-        throw new Error(
-          `xAI API request failed: ${response.statusText}. Details: ${errorData}`
-        );
-      }
-
-      const data = await response.json();
-      return data.choices[0].message.content;
-    } else if (config.provider === "groq") {
-      const groqModel = getGroqModelById(config.selectedModel);
-      if (!groqModel) {
-        throw new Error(`Invalid Groq model selected: ${config.selectedModel}`);
-      }
-
-      response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.groqKey}`,
-        },
-        body: JSON.stringify({
-          messages: [
-            {
-              role: "system",
-              content: SYSTEM_PROMPT,
-            },
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-          model: groqModel.id,
-          temperature: 0.5,
-          max_tokens: 8000,
-        }),
-        signal,
-      });
-
-      if (!response?.ok) {
-        const errorData = await response.text();
-        throw new Error(
-          `Groq API request failed: ${response.statusText}. Details: ${errorData}`
-        );
-      }
-
-      const data = await response.json();
-      return data.choices[0].message.content;
-    } else if (config.provider === "ollama") {
-      const ollamaModel = getOllamaModelById(config.selectedModel);
-      if (!ollamaModel) {
-        throw new Error(`Invalid Ollama model selected: ${config.selectedModel}`);
-      }
-
-      const ollamaUrl = config.ollamaUrl || "http://localhost:11434";
-      response = await fetch(`${ollamaUrl}/api/chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: ollamaModel.id,
-          messages: [
-            {
-              role: "system",
-              content: SYSTEM_PROMPT,
-            },
-            {
-              role: "user",
-              content: prompt,
-            },
-          ],
-          stream: false,
-        }),
-        signal,
-      });
-
-      if (!response?.ok) {
-        const errorData = await response.text();
-        throw new Error(
-          `Ollama API request failed: ${response.statusText}. Details: ${errorData}`
-        );
-      }
-
-      const data = await response.json();
-      return data.message.content;
-    } else {
-      throw new Error("Invalid provider");
-    }
-  } catch (error) {
-    console.error("AI analysis error:", error);
-    throw error instanceof Error
-      ? error
-      : new Error("Unknown error during analysis");
-  }
-}

@@ -1,7 +1,12 @@
 import { WEBSITE_URL } from "./src/utils/constants";
+import path from "path";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  turbopack: {
+    // Explicitly set project root to silence multiple lockfile warning
+    root: path.join(__dirname),
+  },
   compiler: {
     removeConsole: process.env.NODE_ENV === "production",
   },

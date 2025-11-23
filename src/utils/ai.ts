@@ -3,6 +3,8 @@ import { getModelById, GPT_MODELS } from "./openai-models";
 import { getClaudeModelById, CLAUDE_MODELS } from "./claude-models";
 import { getGeminiModelById, GEMINI_MODELS } from "./gemini-models";
 import { getXAIModelById, XAI_MODELS } from "./xai-models";
+import { getGroqModelById, GROQ_MODELS } from "./groq-models";
+import { getOllamaModelById, OLLAMA_MODELS } from "./ollama-models";
 import Anthropic from "@anthropic-ai/sdk";
 import { AIConfig } from "@/types/ai";
 
@@ -40,6 +42,12 @@ export function getModelName(config: AIConfig): string {
   } else if (config.provider === "xai") {
     const model = getXAIModelById(config.selectedModel);
     return model?.name.toLowerCase().replace(/\s+/g, "-") || "xai";
+  } else if (config.provider === "groq") {
+    const model = getGroqModelById(config.selectedModel);
+    return model?.name.toLowerCase().replace(/\s+/g, "-") || "groq";
+  } else if (config.provider === "ollama") {
+    const model = getOllamaModelById(config.selectedModel);
+    return model?.name.toLowerCase().replace(/\s+/g, "-") || "ollama";
   }
   return "";
 }
@@ -81,6 +89,20 @@ export function useAIConfig() {
           if (!validModel) {
             savedConfig.selectedModel = XAI_MODELS[0].id;
           }
+        } else if (savedConfig.provider === "groq") {
+          const validModel = GROQ_MODELS.find(
+            (m) => m.id === savedConfig.selectedModel
+          );
+          if (!validModel) {
+            savedConfig.selectedModel = GROQ_MODELS[0].id;
+          }
+        } else if (savedConfig.provider === "ollama") {
+          const validModel = OLLAMA_MODELS.find(
+            (m) => m.id === savedConfig.selectedModel
+          );
+          if (!validModel) {
+            savedConfig.selectedModel = OLLAMA_MODELS[0].id;
+          }
         }
         return savedConfig;
       }
@@ -91,6 +113,8 @@ export function useAIConfig() {
       claudeKey: "",
       geminiKey: "",
       xaiKey: "",
+      groqKey: "",
+      ollamaUrl: "http://localhost:11434",
       selectedModel: GPT_MODELS[0].id,
       language: "english",
     };
@@ -280,6 +304,83 @@ export async function analyzeWithAI(
 
       const data = await response.json();
       return data.choices[0].message.content;
+    } else if (config.provider === "groq") {
+      const groqModel = getGroqModelById(config.selectedModel);
+      if (!groqModel) {
+        throw new Error(`Invalid Groq model selected: ${config.selectedModel}`);
+      }
+
+      response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.groqKey}`,
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content: SYSTEM_PROMPT,
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          model: groqModel.id,
+          temperature: 0.5,
+          max_tokens: 8000,
+        }),
+        signal,
+      });
+
+      if (!response?.ok) {
+        const errorData = await response.text();
+        throw new Error(
+          `Groq API request failed: ${response.statusText}. Details: ${errorData}`
+        );
+      }
+
+      const data = await response.json();
+      return data.choices[0].message.content;
+    } else if (config.provider === "ollama") {
+      const ollamaModel = getOllamaModelById(config.selectedModel);
+      if (!ollamaModel) {
+        throw new Error(`Invalid Ollama model selected: ${config.selectedModel}`);
+      }
+
+      const ollamaUrl = config.ollamaUrl || "http://localhost:11434";
+      response = await fetch(`${ollamaUrl}/api/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: ollamaModel.id,
+          messages: [
+            {
+              role: "system",
+              content: SYSTEM_PROMPT,
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          stream: false,
+        }),
+        signal,
+      });
+
+      if (!response?.ok) {
+        const errorData = await response.text();
+        throw new Error(
+          `Ollama API request failed: ${response.statusText}. Details: ${errorData}`
+        );
+      }
+
+      const data = await response.json();
+      return data.message.content;
     } else {
       throw new Error("Invalid provider");
     }

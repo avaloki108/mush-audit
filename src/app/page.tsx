@@ -4,6 +4,9 @@ import { Sidebar } from "@/components/Sidebar";
 import { SecurityIcon, GasIcon, CodeIcon, AIIcon, ComplianceIcon, ReportIcon } from "@/components/Icons";
 import HomeAISelector from "@/components/HomeAISelector";
 
+// Force dynamic rendering to avoid localStorage issues during build
+export const dynamic = 'force-dynamic';
+
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-[#1A1A1A] flex flex-col">

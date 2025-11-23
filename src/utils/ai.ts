@@ -21,6 +21,9 @@ Please include full code snippets and function names in your response.`;
 
 // Get AI config from localStorage
 export function getAIConfig(config: AIConfig): AIConfig {
+  if (typeof window === 'undefined') {
+    return config;
+  }
   const savedConfig = localStorage.getItem("ai_config");
   if (savedConfig) {
     return JSON.parse(savedConfig);
@@ -134,6 +137,10 @@ export async function analyzeWithAI(
   prompt: string,
   signal?: AbortSignal
 ): Promise<string> {
+  if (typeof window === 'undefined') {
+    throw new Error("AI analysis must be performed on the client side");
+  }
+  
   const savedConfig = localStorage.getItem("ai_config");
   if (!savedConfig) {
     throw new Error("AI configuration not found");

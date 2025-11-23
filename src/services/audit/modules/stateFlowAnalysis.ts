@@ -836,7 +836,7 @@ export class StateFlowAnalyzer {
     if (externalCall.targetType) {
       const targetContract = allContracts.find(c => 
         c.contractName === externalCall.targetType ||
-        c.contractName.includes(externalCall.targetType)
+        (externalCall.targetType && c.contractName.includes(externalCall.targetType))
       );
       
       if (targetContract) {

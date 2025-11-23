@@ -379,7 +379,7 @@ describe("Bridge Message Replay", function () {
         
         // Gas optimizations disguised as security
         /gas optimization|save gas|gas efficient|reduce gas/i,
-        /++i.*more efficient|cache.*length|unchecked.*increment/i,
+        /\+\+i.*more efficient|cache.*length|unchecked.*increment/i,
         /storage.*memory.*cheaper|constant.*immutable.*gas/i,
         
         // Low-value informational findings

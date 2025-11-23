@@ -16,6 +16,7 @@ import { ThreatIntelligenceEngine } from "./modules/threatIntelligence";
 import { Mitigation } from "./modules/mitigationVerification";
 import { ContractState } from "./modules/stateFlowAnalysis";
 import { SecurityMonitoringEngine } from "./modules/securityMonitoring";
+import { EconomicAttackVectorAnalyzer } from "./modules/economicAttackVectors";
 // Logger utility for monitoring
 const logger = {
   info: (category: string, message: string) => console.log(`[${category}] ${message}`),
@@ -54,6 +55,7 @@ interface AnalysisResult {
   dependencyGraph?: any;
   stateFlowAnalysis?: any;
   mitigationVerification?: any;
+  economicAttackAnalysis?: any;
 }
 
 // Initialize global threat intelligence and monitoring engines
@@ -258,6 +260,7 @@ export async function analyzeContract(params: {
       let dependencyGraph = null;
       let mitigationVerificationResults = null;
       let stateFlowResults = null;
+      let economicAttackAnalysisResults = null;
 
       if (isProtocolMode && params.files.length > 1) {
         logger.info('Protocol Analysis', 'Running cross-contract dependency mapping...');
@@ -286,6 +289,13 @@ export async function analyzeContract(params: {
         mitigationVerificationResults = mitigationVerificationEngine.verifyMitigations();
 
         logger.info('Protocol Analysis', `Mitigation verification: ${mitigationVerificationResults.length} vulnerabilities assessed`);
+
+        // Perform economic attack vector analysis
+        logger.info('Protocol Analysis', 'Analyzing economic attack vectors...');
+        const economicAttackAnalyzer = new EconomicAttackVectorAnalyzer(params.files);
+        economicAttackAnalysisResults = economicAttackAnalyzer.analyzeEconomicAttackVectors();
+
+        logger.info('Protocol Analysis', `Economic attack analysis: ${economicAttackAnalysisResults.attackVectors.length} economic attack vectors found, risk score: ${economicAttackAnalysisResults.totalRiskScore}`);
       }
 
       // Format cross-contract analysis results
@@ -482,6 +492,58 @@ export async function analyzeContract(params: {
             }
           });
         }
+
+        // Economic Attack Vector Analysis Results
+        if (economicAttackAnalysisResults) {
+          crossContractSection += '### Economic Attack Vector Analysis\n\n';
+
+          crossContractSection += `- **Total Economic Attack Vectors:** ${economicAttackAnalysisResults.attackVectors.length}\n`;
+          crossContractSection += `- **Risk Score:** ${economicAttackAnalysisResults.totalRiskScore}/100\n`;
+          crossContractSection += `- **Fund Loss Exposure:** ${economicAttackAnalysisResults.fundLossExposure}\n`;
+          crossContractSection += `- **Mitigation Effectiveness:** ${economicAttackAnalysisResults.mitigationEffectiveness}%\n\n`;
+
+          if (economicAttackAnalysisResults.attackVectors.length > 0) {
+            const criticalAttacks = economicAttackAnalysisResults.attackVectors.filter((v: any) => v.severity === 'Critical');
+            const highAttacks = economicAttackAnalysisResults.attackVectors.filter((v: any) => v.severity === 'High');
+
+            if (criticalAttacks.length > 0) {
+              crossContractSection += `🚨 **${criticalAttacks.length} CRITICAL** economic attack vectors identified\n\n`;
+            }
+            if (highAttacks.length > 0) {
+              crossContractSection += `⚠️ **${highAttacks.length} HIGH** severity economic attack vectors identified\n\n`;
+            }
+
+            // Group by attack type
+            const attacksByType = new Map<string, any[]>();
+            economicAttackAnalysisResults.attackVectors.forEach((attack: any) => {
+              if (!attacksByType.has(attack.type)) {
+                attacksByType.set(attack.type, []);
+              }
+              attacksByType.get(attack.type)!.push(attack);
+            });
+
+            attacksByType.forEach((attacks, type) => {
+              crossContractSection += `#### ${type}\n`;
+              attacks.forEach((attack: any) => {
+                crossContractSection += `- **Severity:** ${attack.severity} | **Probability:** ${attack.probability}\n`;
+                crossContractSection += `  - **Contracts:** ${attack.contracts.join(', ')}\n`;
+                crossContractSection += `  - **Impact:** ${attack.economicImpact}\n`;
+                crossContractSection += `  - **Potential Loss:** ${attack.potentialLoss}\n`;
+                crossContractSection += `  - **Scenario:** ${attack.exploitScenario}\n`;
+                crossContractSection += `  - **Recommendation:** ${attack.recommendation}\n\n`;
+              });
+            });
+          }
+
+          // Add economic recommendations
+          if (economicAttackAnalysisResults.recommendations.length > 0) {
+            crossContractSection += '#### Economic Risk Recommendations\n\n';
+            economicAttackAnalysisResults.recommendations.forEach((rec: string) => {
+              crossContractSection += `- ${rec}\n`;
+            });
+            crossContractSection += '\n';
+          }
+        }
       }
 
       // Format threat intelligence findings
@@ -574,7 +636,8 @@ export async function analyzeContract(params: {
         ...(isProtocolMode && {
           dependencyGraph,
           stateFlowAnalysis: stateFlowResults,
-          mitigationVerification: mitigationVerificationResults
+          mitigationVerification: mitigationVerificationResults,
+          economicAttackAnalysis: economicAttackAnalysisResults
         })
       };
     } catch (error: unknown) {

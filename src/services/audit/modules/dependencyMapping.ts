@@ -399,5 +399,11 @@ function findContractByType(typeName: string, contracts: ContractFile[]): Contra
 }
 
 // --- Metrics Helpers ---
-function detectCyclicDependencies(graph: DependencyGraph): string[][] { return []; } // Placeholder
-function identifyCriticalContracts(graph: DependencyGraph): string[] { return []; } // Placeholder
+function detectCyclicDependencies(graph: DependencyGraph): string[][] {
+  return [];
+} // Placeholder
+
+function identifyCriticalContracts(graph: DependencyGraph): string[] {
+  return [];
+} // Placeholder
+

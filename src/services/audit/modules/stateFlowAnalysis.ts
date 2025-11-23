@@ -98,16 +98,14 @@ export interface TaintReport {
 }
 
 export class StateFlowAnalyzer {
+  private contracts: ContractFile[];
   private contractStates: ContractState[];
   private variableTypes: Map<string, string>; // Maps variable names to their types
 
   constructor(contracts: ContractFile[]) {
+    this.contracts = contracts;
     this.variableTypes = new Map();
     this.contractStates = contracts.map(contract => this.parseContractState(contract));
-  private contracts: ContractFile[];
-
-  constructor(contracts: ContractFile[]) {
-    this.contracts = contracts;
   }
 
   analyzeStateFlow(): StateFlowResult {

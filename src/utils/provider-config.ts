@@ -5,6 +5,7 @@ import { GEMINI_MODELS } from "./gemini-models";
 import { XAI_MODELS } from "./xai-models";
 import { GROQ_MODELS } from "./groq-models";
 import { OLLAMA_MODELS } from "./ollama-models";
+import { MISTRAL_MODELS } from "./mistral-models";
 
 export const PROVIDERS = {
   gpt: {
@@ -51,6 +52,15 @@ export const PROVIDERS = {
     getKeyLink: "https://console.groq.com/keys",
     getKeyText: "Get one from Groq Console",
     defaultModel: GROQ_MODELS[0].id,
+  },
+  mistral: {
+    name: "Mistral AI",
+    models: MISTRAL_MODELS,
+    keyName: "Mistral API Key",
+    keyPlaceholder: "Enter your Mistral API key",
+    getKeyLink: "https://console.mistral.ai",
+    getKeyText: "Get one from Mistral Console",
+    defaultModel: MISTRAL_MODELS[0].id,
   },
   ollama: {
     name: "Ollama (Local)",

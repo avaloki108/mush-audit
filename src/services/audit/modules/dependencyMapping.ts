@@ -585,15 +585,27 @@ function detectReadOnlyReentrancy(
     const content = contract.content;
     
     // Look for view/pure functions that make external calls
-    const viewFunctionPattern = /function\s+(\w+)\s*\([^)]*\)\s+(?:public|external)\s+view[^{]*\{([^}]+)\}/gs;
+    // Use better regex to handle nested braces
+    const viewFunctionPattern = /function\s+(\w+)\s*\([^)]*\)\s+(?:public|external)\s+view[^{]*\{/g;
     const matches = content.matchAll(viewFunctionPattern);
 
     for (const match of matches) {
       const functionName = match[1];
-      const functionBody = match[2];
+      const startIdx = match.index! + match[0].length;
+      
+      // Extract function body properly by counting braces
+      let braceCount = 1;
+      let endIdx = startIdx;
+      while (braceCount > 0 && endIdx < content.length) {
+        if (content[endIdx] === '{') braceCount++;
+        if (content[endIdx] === '}') braceCount--;
+        endIdx++;
+      }
+      const functionBody = content.substring(startIdx, endIdx - 1);
 
-      // Check if view function calls other contracts
-      if (/\w+\.[\w]+\s*\(/.test(functionBody)) {
+      // Check if view function calls other contracts (more specific pattern)
+      // Look for actual external contract calls, not just any function call
+      if (/[A-Z]\w+\([^)]*\)\.\w+\s*\(|\w+\.\w+\s*\{/.test(functionBody)) {
         vulnerabilities.push({
           type: 'Read-Only Reentrancy',
           severity: 'High',

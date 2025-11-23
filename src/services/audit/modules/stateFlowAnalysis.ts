@@ -642,15 +642,25 @@ export class StateFlowAnalyzer {
     // Cross-contract invariants
     if (contractStates.length > 1) {
       // Check for circular dependencies in value transfers
-      const transferringContracts = contractStates.filter(state =>
-        state.transitions.some(t =>
+      // Optimize by using a counter instead of filter().length
+      let transferringCount = 0;
+      const transferringContracts: ContractState[] = [];
+      
+      for (const state of contractStates) {
+        const hasTransfers = state.transitions.some(t =>
           t.externalCalls.length > 0 && 
           (t.functionName.toLowerCase().includes('transfer') ||
            t.functionName.toLowerCase().includes('send'))
-        )
-      );
+        );
+        
+        if (hasTransfers) {
+          transferringCount++;
+          transferringContracts.push(state);
+          if (transferringCount >= 2) break; // Early exit once we find 2
+        }
+      }
 
-      if (transferringContracts.length >= 2) {
+      if (transferringCount >= 2) {
         invariants.push({
           description: 'Multiple contracts perform external transfers - verify no circular dependencies',
           violated: false, // Would need deeper analysis

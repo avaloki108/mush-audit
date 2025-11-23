@@ -131,7 +131,7 @@ export class MitigationVerificationEngine {
     },
     {
       name: 'ERC-777 Hook Protection',
-      pattern: /tokensToSend|tokensReceived|!.*isContract|ReentrancyGuard/,
+      pattern: /tokensToSend|tokensReceived|!\s*\w+\.isContract\s*\(|ReentrancyGuard/,
       effectiveness: 0.80,
       vulnerabilityTypes: ['logical reentrancy', 'erc-777 hook', 'erc-1155 callback']
     },

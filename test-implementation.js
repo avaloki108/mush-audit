@@ -216,15 +216,28 @@ try {
 console.log('\n5️⃣ Testing TypeScript Compilation...');
 const { execSync } = require('child_process');
 try {
-  // Check only the target files
-  const result = execSync(
-    'npx tsc --noEmit 2>&1 | grep -E "(stateFlowAnalysis|dependencyMapping|crossChainAnalysis|enhancedReportGenerator)" || echo "No errors"',
-    { cwd: __dirname, encoding: 'utf8' }
+  // Run TypeScript compiler and capture output
+  let compilationOutput;
+  try {
+    execSync('npx tsc --noEmit', { cwd: __dirname, encoding: 'utf8', stdio: 'pipe' });
+    compilationOutput = '';
+  } catch (error) {
+    compilationOutput = error.stdout || error.stderr || '';
+  }
+  
+  // Check if there are errors in target files
+  const targetFiles = ['stateFlowAnalysis', 'dependencyMapping', 'crossChainAnalysis', 'enhancedReportGenerator'];
+  const hasTargetErrors = targetFiles.some(file => 
+    compilationOutput.includes(file) && compilationOutput.includes('error TS')
   );
   
-  if (result.includes('error TS')) {
+  if (hasTargetErrors) {
     console.log('   ❌ TypeScript compilation errors found:');
-    console.log(result);
+    const lines = compilationOutput.split('\n');
+    const relevantLines = lines.filter(line => 
+      targetFiles.some(file => line.includes(file))
+    );
+    console.log(relevantLines.join('\n'));
     process.exit(1);
   } else {
     console.log('   ✅ All target files compile without errors');

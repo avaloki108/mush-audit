@@ -266,9 +266,9 @@ export class StateFlowAnalyzer {
     const functionPattern = new RegExp(`function\\s+${functionName}\\s*\\([^)]*\\)[^{]*\\{`, 'g');
     const match = functionPattern.exec(contractCode);
     
-    if (!match) return '';
+    if (!match || match.index === undefined) return '';
     
-    const startIndex = match.index! + match[0].length;
+    const startIndex = match.index + match[0].length;
     let braceCount = 1;
     let endIndex = startIndex;
     
@@ -284,7 +284,7 @@ export class StateFlowAnalyzer {
 
   private checkIfModifiesState(functionBody: string): boolean {
     // Check for state modifications
-    return /\s+\w+\s*=\s*[^=]/.test(functionBody) || // assignments
+    return /\w+\s*=\s*(?!=)/.test(functionBody) ||   // assignments (not ==, !=)
            /\+\+|\-\-/.test(functionBody) ||          // increment/decrement
            /\.push\(|\.pop\(/.test(functionBody) ||   // array operations
            /delete\s+/.test(functionBody);            // delete operations
@@ -545,7 +545,7 @@ export class StateFlowAnalyzer {
 
   private checkAccessControl(transition: StateTransition, contractName: string): StateFlowIssue | null {
     // Check if state-changing function has access control
-    if (transition.stateChanges.length > 0 && transition.visibility === 'external' || transition.visibility === 'public') {
+    if (transition.stateChanges.length > 0 && (transition.visibility === 'external' || transition.visibility === 'public')) {
       const hasAccessControl = transition.modifiers.some(mod => 
         /only|auth|guard|owner|admin/i.test(mod)
       );

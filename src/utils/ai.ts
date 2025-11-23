@@ -329,7 +329,7 @@ export async function analyzeWithAI(
       }
       ensureProviderKey();
       const gptBase =
-        providerKey.startsWith("sk-or-") || providerKey.startsWith("sess-")
+        providerKey && (providerKey.startsWith("sk-or-") || providerKey.startsWith("sess-"))
           ? "https://openrouter.ai/api/v1"
           : "https://api.openai.com/v1";
 

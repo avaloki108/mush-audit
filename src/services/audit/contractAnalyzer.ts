@@ -103,7 +103,7 @@ export async function analyzeContract(params: {
     throw new Error("Contract analysis must be performed on the client side");
   }
 
-  const savedConfig = localStorage.getItem("ai_config");
+  const savedConfig = typeof window !== 'undefined' ? localStorage.getItem("ai_config") : null;
   if (!savedConfig) {
     throw new Error("AI configuration not found");
   }

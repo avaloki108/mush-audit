@@ -10,7 +10,7 @@ const SYSTEM_PROMPT = `You are a smart contract security auditor with the follow
 
 type Provider = 'groq' | 'gemini' | 'xai' | 'gpt' | 'claude' | 'ollama';
 
-export const runtime = 'node';
+export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   let body: any;

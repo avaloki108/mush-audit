@@ -126,7 +126,9 @@ export function useAIConfig() {
 
   // Save configuration to localStorage
   useEffect(() => {
-    localStorage.setItem("ai_config", JSON.stringify(config));
+    if (typeof window !== 'undefined') {
+      localStorage.setItem("ai_config", JSON.stringify(config));
+    }
   }, [config]);
 
   return { config, setConfig };

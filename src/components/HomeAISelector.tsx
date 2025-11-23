@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import AIConfigModal from "@/components/audit/AIConfigModal";
 import { getModelName, useAIConfig } from "@/utils/ai";
@@ -9,12 +9,18 @@ import { getProviderInfo } from "@/utils/provider-config";
 export default function HomeAISelector() {
   const [isOpen, setIsOpen] = useState(false);
   const { config, setConfig } = useAIConfig();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const providerInfo = getProviderInfo(config.provider);
-  const modelLabel = getModelName(config);
+  // Only render the model label on the client to avoid hydration mismatches
+  const modelLabel = isClient ? getModelName(config) : "Loading...";
 
   const refreshConfig = () => {
-    const saved = localStorage.getItem("ai_config");
+    const saved = typeof window !== 'undefined' ? localStorage.getItem("ai_config") : null;
     if (saved) {
       try {
         setConfig(JSON.parse(saved));

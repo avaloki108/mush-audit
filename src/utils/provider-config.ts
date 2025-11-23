@@ -84,6 +84,7 @@ export const getApiKey = (config: AIConfig) => {
     gemini: process.env.NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY,
     xai: process.env.NEXT_PUBLIC_XAI_API_KEY || process.env.XAI_API_KEY,
     groq: process.env.NEXT_PUBLIC_GROQ_API_KEY || process.env.GROQ_API_KEY,
+    mistral: process.env.NEXT_PUBLIC_MISTRAL_API_KEY || process.env.MISTRAL_API_KEY,
     ollama: config.ollamaUrl, // Ollama URL stays in config
   };
 
@@ -93,6 +94,7 @@ export const getApiKey = (config: AIConfig) => {
     gemini: config.geminiKey || envFallbacks.gemini || "",
     xai: config.xaiKey || envFallbacks.xai || "",
     groq: config.groqKey || envFallbacks.groq || "",
+    mistral: config.mistralKey || envFallbacks.mistral || "",
     ollama: config.ollamaUrl,
   } as const;
   return keys[config.provider];

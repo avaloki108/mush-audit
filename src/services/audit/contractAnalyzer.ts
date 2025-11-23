@@ -275,7 +275,7 @@ export async function analyzeContract(params: {
         const stateFlowAnalyzer = new StateFlowAnalyzer(params.files);
         stateFlowResults = stateFlowAnalyzer.analyzeStateFlow();
 
-        logger.info('Protocol Analysis', `State flow analysis: ${stateFlowResults.contractStates.length} contracts analyzed, ${stateFlowResults.potentialIssues.length} issues found`);
+        logger.info('Protocol Analysis', `State flow analysis completed: ${stateFlowResults.potentialIssues.length} issues found, ${stateFlowResults.criticalPaths.length} critical paths identified`);
 
         // Perform mitigation verification with actual contract content
         logger.info('Protocol Analysis', 'Verifying mitigations...');

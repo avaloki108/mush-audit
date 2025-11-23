@@ -30,6 +30,7 @@ export default function AIConfigModal({
       geminiKey: "",
       xaiKey: "",
       groqKey: "",
+      mistralKey: "",
       ollamaUrl: "http://localhost:11434",
       selectedModel: GPT_MODELS[0].id,
       language: "english",
@@ -70,6 +71,7 @@ export default function AIConfigModal({
       gemini: { geminiKey: value },
       xai: { xaiKey: value },
       groq: { groqKey: value },
+      mistral: { mistralKey: value },
       ollama: { ollamaUrl: value },
     };
 
@@ -267,6 +269,7 @@ export default function AIConfigModal({
                 geminiKey: "",
                 xaiKey: "",
                 groqKey: "",
+                mistralKey: "",
                 ollamaUrl: "http://localhost:11434",
                 selectedModel: GPT_MODELS[0].id,
                 language: "english",

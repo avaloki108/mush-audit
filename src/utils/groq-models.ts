@@ -8,6 +8,41 @@ export interface GroqModel {
 
 export const GROQ_MODELS: GroqModel[] = [
   {
+    id: "groq/compound",
+    name: "Compound",
+    description: "Production-ready agentic AI with web search, code execution, and browser automation",
+    contextWindow: 128000,
+    developer: "Groq",
+  },
+  {
+    id: "groq/compound-mini",
+    name: "Compound Mini",
+    description: "Lightweight agentic AI with integrated tools in a single API call",
+    contextWindow: 128000,
+    developer: "Groq",
+  },
+  {
+    id: "llama-4-scout",
+    name: "Llama 4 Scout (17Bx16MoE)",
+    description: "Meta Llama 4 with image input, 128K context, function calling, and JSON mode",
+    contextWindow: 128000,
+    developer: "Meta",
+  },
+  {
+    id: "llama-4-maverick",
+    name: "Llama 4 Maverick (17Bx128E)",
+    description: "Advanced Llama 4 with multimodal support and enhanced reasoning",
+    contextWindow: 128000,
+    developer: "Meta",
+  },
+  {
+    id: "kimi-k2-instruct-0905",
+    name: "Kimi K2 Instruct",
+    description: "Moonshot AI model with enhanced agentic coding and frontend development",
+    contextWindow: 128000,
+    developer: "Moonshot AI",
+  },
+  {
     id: "deepseek-r1-distill-llama-70b",
     name: "DeepSeek R1 70B",
     description: "DeepSeek's R1 distilled into Llama 70B with strong reasoning",
@@ -17,7 +52,7 @@ export const GROQ_MODELS: GroqModel[] = [
   {
     id: "llama-3.3-70b-versatile",
     name: "Llama 3.3 70B Versatile",
-    description: "Meta's latest Llama 3.3 70B with enhanced capabilities",
+    description: "Meta's Llama 3.3 70B with enhanced capabilities",
     contextWindow: 131072,
     developer: "Meta",
   },

@@ -1,7 +1,7 @@
 # `Mush Audit`
 ----------------------------------------
 
-Mush Audit is an AI-powered smart contract security analysis platform that leverages multiple AI models to provide comprehensive security audits for blockchain contracts.
+Mush Audit is an AI-powered smart contract security analysis platform that leverages multiple AI models to provide comprehensive security audits for blockchain contracts across multiple programming languages and ecosystems.
 
 ----------------------------------------
 
@@ -11,6 +11,18 @@ Mush Audit is an AI-powered smart contract security analysis platform that lever
 
 
 ## Features
+
+### 🌍 Multi-Language Support
+- **NEW:** Support for multiple blockchain programming languages
+  - **Solidity** - Ethereum and all EVM-compatible chains (Polygon, BSC, Arbitrum, Optimism, Base, etc.)
+  - **Rust** - Solana programs and Substrate-based chains
+  - **Monad** - High-performance EVM-compatible Layer 1 (uses Solidity with parallel execution optimizations)
+  - **Vyper** - Python-based EVM smart contracts
+  - **Move** - Aptos and Sui (coming soon)
+  - **Cairo** - StarkNet (coming soon)
+- Automatic language detection from file extensions and content
+- Language-specific vulnerability patterns and security checks
+- Tailored audit prompts for each ecosystem
 
 ### 🛡️ Security Analysis
 - Comprehensive vulnerability detection based on **2024-2025 exploit data**
@@ -22,6 +34,8 @@ Mush Audit is an AI-powered smart contract security analysis platform that lever
 - **NEW:** MEV and PBS vulnerability detection
 - **NEW:** Cross-chain bridge security analysis
 - **NEW:** Zero-Knowledge proof implementation checks
+- **NEW:** Solana-specific checks (PDA validation, CPI security, account confusion, etc.)
+- **NEW:** Monad-specific optimizations (parallel execution considerations)
 
 ### ⚡ Gas Optimization
 - Transaction cost analysis
@@ -120,15 +134,44 @@ Mush Audit is an AI-powered smart contract security analysis platform that lever
 
 ## Usage
 
+### Auditing Smart Contracts
+
 1. Visit the platform (http://localhost:3000 in development)
 2. Configure your AI provider:
    - Click on AI Configuration
    - Select your preferred provider (GPT, Claude, Gemini, xAI, Groq, or Ollama)
    - Enter your API key or Ollama URL
    - Choose your preferred model
-3. Input your smart contract address
-4. Select the blockchain network
+3. **Upload or paste your smart contract:**
+   - **For Solidity/EVM chains (Ethereum, Monad, Polygon, etc.):** Upload `.sol` files or paste contract address
+   - **For Solana/Rust programs:** Upload `.rs` files
+   - **For other languages:** Upload `.vy` (Vyper), `.move` (Move), or `.cairo` (Cairo) files
+4. Select the blockchain network (if using contract address)
 5. Get comprehensive security analysis with **2024-2025 vulnerability coverage**
+
+The platform will automatically:
+- Detect the programming language from file extensions and content
+- Apply language-specific security checks
+- Use specialized audit prompts for the detected language
+- Display the detected language in the audit report
+
+### Supported File Types
+
+| Language | File Extensions | Ecosystems |
+|----------|----------------|------------|
+| Solidity | `.sol` | Ethereum, Monad, Polygon, BSC, Arbitrum, Optimism, Base, zkSync, and all EVM chains |
+| Rust | `.rs` | Solana, Near, Polkadot (Substrate) |
+| Vyper | `.vy` | Ethereum and EVM-compatible chains |
+| Move | `.move` | Aptos, Sui |
+| Cairo | `.cairo` | StarkNet |
+
+### Monad-Specific Features
+
+When analyzing contracts for Monad deployment:
+- Automatic detection if "monad" is in the chain name
+- Additional considerations for parallel execution optimization
+- High-throughput performance recommendations
+- All standard EVM security checks still apply (Monad is 100% Solidity-compatible)
 
 ### Runtime Requirements & Environment Keys
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { ethers } from "ethers";
 import { toast } from "react-hot-toast";
 import { checkContractOnChains } from "@/utils/blockchain";
@@ -8,6 +8,7 @@ import { getRpcUrl } from "@/utils/chainServices";
 import type { ChainContractInfo, ContractFile } from "@/types/blockchain";
 import { loadGitHubSolidityFiles, parseGitHubRepoUrl, sanitizeTokenInput } from "@/utils/githubRepoLoader";
 import ContractInfoCard from "@/components/audit/ContractInfoCard";
+import ProgressTerminal, { ProgressLog, LogLevel } from "@/components/audit/ProgressTerminal";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -48,6 +49,23 @@ export default function AuditPage() {
   const [analysisFiles, setAnalysisFiles] = useState<ContractFile[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const { config } = useAIConfig();
+  
+  // Progress terminal state
+  const [progressLogs, setProgressLogs] = useState<ProgressLog[]>([]);
+  
+  // Helper function to add a log entry
+  const addProgressLog = useCallback((message: string, level: LogLevel = "info") => {
+    setProgressLogs((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        message,
+        level,
+        timestamp: new Date(),
+      },
+    ]);
+  }, []);
+  
   const [editorContent, setEditorContent] =
     useState(`// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
@@ -165,6 +183,7 @@ contract Vault {
 
       setIsAnalyzing(true);
       setIsAIConfigModalOpen(false);
+      setProgressLogs([]);
 
       const controller = new AbortController();
       setAbortController(controller);
@@ -175,11 +194,18 @@ contract Vault {
         content: editorContent,
       };
 
+      // Progress logging
+      addProgressLog("Starting analysis of 1 file...", "info");
+      addProgressLog("Initializing security analysis modules...", "info");
+      addProgressLog("Analyzing contract code and detecting language...", "info");
+
       const result = await analyzeContract({
         files: [contractFile],
         contractName: "Contract",
         signal: controller.signal,
       });
+
+      addProgressLog("Analysis complete! Generating report...", "success");
 
       let analysisContent = result.report.analysis;
       if (!analysisContent.match(/^#\s+/m)) {
@@ -209,12 +235,15 @@ contract Vault {
         return [...filesWithoutCurrentModelReport, reportFile];
       });
 
+      addProgressLog("Report generated successfully!", "success");
       toast.success("Analysis completed");
     } catch (error: unknown) {
       if (error instanceof Error && error.name === "AbortError") {
+        addProgressLog("Analysis cancelled by user", "warning");
         toast.success("Analysis cancelled");
       } else {
         console.error("Error in analysis:", error);
+        addProgressLog("Error during analysis", "error");
         toast.error("Error during analysis");
       }
     } finally {
@@ -388,9 +417,15 @@ contract Vault {
     try {
       setIsAnalyzing(true);
       setIsAIConfigModalOpen(false);
+      setProgressLogs([]);
 
       const controller = new AbortController();
       setAbortController(controller);
+
+      // Progress logging
+      addProgressLog(`Starting analysis of ${uploadedFiles.length} files...`, "info");
+      addProgressLog("Initializing security analysis modules...", "info");
+      addProgressLog("Analyzing contract code and detecting language...", "info");
 
       // Analyze all uploaded files together
       const result = await analyzeContract({
@@ -401,6 +436,8 @@ contract Vault {
         signal: controller.signal,
         isMultiFile: true,
       });
+
+      addProgressLog("Analysis complete! Generating report...", "success");
 
       let analysisContent = result.report.analysis;
       if (!analysisContent.match(/^#\s+/m)) {
@@ -431,9 +468,11 @@ contract Vault {
         return [...filesWithoutCurrentModelReport, reportFile];
       });
 
+      addProgressLog("Report generated successfully!", "success");
       toast.success("Analysis completed");
     } catch (error) {
       console.error("Analysis failed:", error);
+      addProgressLog("Analysis failed", "error");
       toast.error("Analysis failed");
     } finally {
       setIsAnalyzing(false);
@@ -791,6 +830,13 @@ contract Vault {
                       try {
                         setIsAnalyzing(true);
                         setIsAIConfigModalOpen(false);
+                        setProgressLogs([]);
+                        
+                        // Progress logging
+                        addProgressLog(`Starting analysis of ${repoFiles.length} files...`, "info");
+                        addProgressLog("Initializing security analysis modules...", "info");
+                        addProgressLog("Analyzing contract code and detecting language...", "info");
+                        
                         const controller = new AbortController();
                         setAbortController(controller);
                         const result = await analyzeContract({
@@ -800,6 +846,9 @@ contract Vault {
                           isMultiFile: true,
                           analysisMode: 'protocol'
                         });
+                        
+                        addProgressLog("Analysis complete! Generating report...", "success");
+                        
                         let analysisContent = result.report.analysis;
                         if (!analysisContent.match(/^#\s+/m)) {
                           analysisContent = `# Smart Contract Security Analysis Report\n\n${analysisContent}`;
@@ -813,9 +862,11 @@ contract Vault {
                           const filesWithoutCurrentModelReport = prev.filter((f) => f.path !== reportFileName);
                           return [...filesWithoutCurrentModelReport, reportFile];
                         });
+                        addProgressLog("Report generated successfully!", "success");
                         toast.success("Repository analysis completed");
                       } catch (err) {
                         console.error(err);
+                        addProgressLog("Repository analysis failed", "error");
                         toast.error("Repository analysis failed");
                       } finally {
                         setIsAnalyzing(false);
@@ -859,6 +910,46 @@ contract Vault {
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {isAnalyzing && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+                  <div className="bg-[#1E1E1E] rounded-lg p-8 flex flex-col items-center max-w-2xl w-full mx-4">
+                    <div className="relative w-24 h-24 mb-4">
+                      <div className="absolute inset-0 border-4 border-t-[#FF8B3E] border-r-[#FF8B3E]/50 border-b-[#FF8B3E]/30 border-l-[#FF8B3E]/10 rounded-full animate-spin" />
+                      <div className="absolute inset-2 bg-[#1E1E1E] rounded-full flex items-center justify-center">
+                        <Image
+                          src="/mush.png"
+                          alt="Loading"
+                          width={40}
+                          height={40}
+                          className="animate-bounce-slow"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[#E5E5E5] text-lg mb-2">
+                      Analyzing Repository
+                    </p>
+                    <p className="text-gray-400 text-sm mb-4">
+                      This may take a few moments...
+                    </p>
+                    
+                    {/* Progress Terminal */}
+                    <div className="w-full mb-4">
+                      <ProgressTerminal logs={progressLogs} isActive={isAnalyzing} />
+                    </div>
+                    
+                    <button
+                      onClick={handleCancelAnalysis}
+                      className="px-4 py-2 bg-[#252526] text-[#FF8B3E] rounded-md 
+                               border border-[#FF8B3E]/20
+                               hover:bg-[#FF8B3E]/10 transition-colors
+                               font-medium"
+                    >
+                      Cancel Analysis
+                    </button>
                   </div>
                 </div>
               )}
@@ -1084,7 +1175,7 @@ contract Vault {
 
               {isAnalyzing && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-                  <div className="bg-[#1E1E1E] rounded-lg p-8 flex flex-col items-center">
+                  <div className="bg-[#1E1E1E] rounded-lg p-8 flex flex-col items-center max-w-2xl w-full mx-4">
                     <div className="relative w-24 h-24 mb-4">
                       <div className="absolute inset-0 border-4 border-t-[#FF8B3E] border-r-[#FF8B3E]/50 border-b-[#FF8B3E]/30 border-l-[#FF8B3E]/10 rounded-full animate-spin" />
                       <div className="absolute inset-2 bg-[#1E1E1E] rounded-full flex items-center justify-center">
@@ -1103,6 +1194,12 @@ contract Vault {
                     <p className="text-gray-400 text-sm mb-4">
                       This may take a few moments...
                     </p>
+                    
+                    {/* Progress Terminal */}
+                    <div className="w-full mb-4">
+                      <ProgressTerminal logs={progressLogs} isActive={isAnalyzing} />
+                    </div>
+                    
                     <button
                       onClick={handleCancelAnalysis}
                       className="px-4 py-2 bg-[#252526] text-[#FF8B3E] rounded-md 
@@ -1319,7 +1416,7 @@ contract Vault {
 
               {isAnalyzing && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-                  <div className="bg-[#1E1E1E] rounded-lg p-8 flex flex-col items-center">
+                  <div className="bg-[#1E1E1E] rounded-lg p-8 flex flex-col items-center max-w-2xl w-full mx-4">
                     <div className="relative w-24 h-24 mb-4">
                       <div className="absolute inset-0 border-4 border-t-[#FF8B3E] border-r-[#FF8B3E]/50 border-b-[#FF8B3E]/30 border-l-[#FF8B3E]/10 rounded-full animate-spin" />
                       <div className="absolute inset-2 bg-[#1E1E1E] rounded-full flex items-center justify-center">
@@ -1338,6 +1435,12 @@ contract Vault {
                     <p className="text-gray-400 text-sm mb-4">
                       This may take a few moments...
                     </p>
+                    
+                    {/* Progress Terminal */}
+                    <div className="w-full mb-4">
+                      <ProgressTerminal logs={progressLogs} isActive={isAnalyzing} />
+                    </div>
+                    
                     <button
                       onClick={handleCancelAnalysis}
                       className="px-4 py-2 bg-[#252526] text-[#FF8B3E] rounded-md 

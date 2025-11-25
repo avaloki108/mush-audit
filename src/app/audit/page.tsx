@@ -58,7 +58,7 @@ export default function AuditPage() {
     setProgressLogs((prev) => [
       ...prev,
       {
-        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
         message,
         level,
         timestamp: new Date(),
